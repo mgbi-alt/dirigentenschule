@@ -13,11 +13,9 @@ insert into people (legacy_id, nachname, vorname, rolle, sort) values
   (242, 'Heinrich',   'Tobias',      'schueler', 60),
   (257, 'Hooge',      'Thomas',      'schueler', 70),
   (230, 'Ketschik',   'Paul',        'schueler', 80),
-  (239, 'Klassen',    'Tobias',      'schueler', 90),
   (262, 'Klaus',      'Lukas',       'schueler', 100),
   (240, 'Pauls',      'Johannes',    'schueler', 110),
   (198, 'Peters',     'David',       'schueler', 120),
   (261, 'Petkau',     'Simon',       'schueler', 130),
-  (232, 'Siemens',    'Jonas',       'schueler', 140),
   (260, 'Töws',       'Thomas',      'schueler', 150)
 on conflict (legacy_id) do nothing;
