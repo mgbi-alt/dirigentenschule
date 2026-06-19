@@ -3,8 +3,8 @@
 //  Nach dem Anlegen des NEUEN Supabase-Projekts hier eintragen:
 //  Supabase Dashboard → Project Settings → API
 // ============================================================
-const SB_URL = 'https://DEIN-PROJEKT.supabase.co';
-const SB_KEY = 'DEIN_PUBLISHABLE_ANON_KEY';
+const SB_URL = 'https://dfhrtfzmhwxnrxlbejvr.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmaHJ0ZnptaHd4bnJ4bGJlanZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTM3NzgsImV4cCI6MjA5NzQ2OTc3OH0.J-SKn8ZpEG3GQLQMXC_zzkCFwJ0Chy2iTrSNiP4d38g';
 
 // Supabase-Client (global)
 const SB = window.supabase.createClient(SB_URL, SB_KEY);
