@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+*.log
+_Backups/
+node_modules/
+.vscode/
+.claude/
+
+# Personenbezogene Alt-Daten (nur lokal importieren, NICHT committen!)
+hk_*.csv
+*-export.csv
