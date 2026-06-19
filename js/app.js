@@ -7,6 +7,19 @@ let session = null;
 let currentPerson = null;          // Datensatz aus people (per E-Mail/auth_id)
 let isStaff = false;               // lehrer | admin
 let isAdmin = false;
+let seesAll = false;               // Lehrer & Admin sehen alle Schüler
+
+// Darf der aktuelle Nutzer einen Bereich bearbeiten?
+function canEdit(area){
+  if(isAdmin) return true;
+  if(currentPerson?.rolle==='lehrer') return currentPerson.permissions?.[area]===true;
+  return false;
+}
+// Welche Schüler-Zeilen sind sichtbar? (Schüler nur sich selbst)
+function visibleStudents(){
+  if(seesAll || !currentPerson || currentPerson.rolle!=='schueler') return students();
+  return students().filter(p=>p.id===currentPerson.id);
+}
 const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[] };
 
 // ---------- Utils ----------
@@ -44,6 +57,7 @@ async function afterSession(){
     if(currentPerson){
       isStaff = ['lehrer','admin'].includes(currentPerson.rolle);
       isAdmin = currentPerson.rolle==='admin';
+      seesAll = isStaff;
       // auth_id nachtragen falls nur per E-Mail gematcht
       if(!currentPerson.auth_id){
         SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
@@ -55,6 +69,7 @@ async function afterSession(){
     $('#loginBtn').hidden=false; $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
   }
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
+  $('#newMeetingBtn').hidden = !canEdit('theorie');
   await loadAll();
   renderActivePage();
 }
@@ -160,7 +175,7 @@ function renderTheory(){
   const head = `<tr><th class="name">Schüler</th>${ms.map(m=>
     `<th>${esc(m.titel||fmtDate(m.datum))}<br><span class="muted">${fmtDate(m.datum)}</span></th>`).join('')}
     <th class="sum">Ø Gesamt</th></tr>`;
-  const rows = students().map(p=>{
+  const rows = visibleStudents().map(p=>{
     const vals = ms.map(m=>meetingPercent(m.id,p.id));
     const known = vals.filter(v=>v!=null);
     const avg = known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
@@ -204,8 +219,9 @@ function fillPracticeFilters(){
 function renderPractice(){
   if(!$('#ptYear').options.length) fillPracticeFilters();
   const fy=$('#ptYear').value, fw=$('#ptWeek').value, fs=$('#ptStudent').value;
+  const allowed=new Set(visibleStudents().map(p=>p.id));
   let rows=cache.practice.filter(r=>
-    (!fy||r.jahr==fy)&&(!fw||r.kw==fw)&&(!fs||r.person_id===fs));
+    allowed.has(r.person_id)&&(!fy||r.jahr==fy)&&(!fw||r.kw==fw)&&(!fs||r.person_id===fs));
   // Wenn eine konkrete KW gewählt: alle Schüler anzeigen (auch ohne Eintrag)
   rows.sort((a,b)=> b.jahr-a.jahr || b.kw-a.kw || (fullName(personById(a.person_id))>fullName(personById(b.person_id))?1:-1));
 
@@ -213,11 +229,11 @@ function renderPractice(){
     ${SUBJECTS.map(s=>`<th>${s.label}</th>`).join('')}<th class="sum">Gesamt</th><th>Ferien</th></tr>`;
   const body = rows.map(r=>{
     const p=personById(r.person_id);
-    const canEdit = isStaff || (currentPerson&&currentPerson.id===r.person_id);
+    const canEditRow = canEdit('zeiten') || (currentPerson&&currentPerson.id===r.person_id);
     const sum=SUBJECTS.reduce((s,sub)=>s+(+r[sub.key]||0),0);
     const cells=SUBJECTS.map(sub=>{
       const v=+r[sub.key]||0;
-      const inner = canEdit
+      const inner = canEditRow
         ? `<input class="cell-input" type="number" step="5" min="0" value="${v}"
              onchange="savePractice('${r.id}','${sub.key}',this.value)">`
         : v;
@@ -226,7 +242,7 @@ function renderPractice(){
     return `<tr><td>${r.jahr}</td><td>${r.kw}</td><td>${fmtDate(r.datum)}</td>
       <td class="name">${esc(fullName(p))}</td>${cells}
       <td class="sum ${gesamtClass(sum)}">${sum} Min</td>
-      <td><input type="checkbox" ${r.ferien?'checked':''} ${canEdit?'':'disabled'}
+      <td><input type="checkbox" ${r.ferien?'checked':''} ${canEditRow?'':'disabled'}
         onchange="savePractice('${r.id}','ferien',this.checked)"></td></tr>`;
   }).join('');
   $('#practiceTable').innerHTML = rows.length
@@ -269,36 +285,77 @@ function renderBewertung(){
 }
 function renderTests(fach, sel){
   const rows=cache.tests.filter(t=>t.fach===fach);
-  const months=[...new Map(rows.map(r=>[r.monat,r.monat_sort??0])).entries()]
-    .sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
+  const monthMap=[...new Map(rows.map(r=>[r.monat,r.monat_sort??0])).entries()].sort((a,b)=>a[1]-b[1]);
+  const months=monthMap.map(e=>e[0]);
   if(!months.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Tests.</p>'; return; }
+  const edit=canEdit('tests');
   const head=`<tr><th class="name">Schüler</th>${months.map(m=>`<th>${esc(m)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
-  const body=students().map(p=>{
-    const vals=months.map(m=>{
+  const body=visibleStudents().map(p=>{
+    const vals=months.map((m,i)=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===m);
-      return r?Math.round(r.ergebnis):null;
+      const v=r?Math.round(r.ergebnis):null;
+      const sort=monthMap[i][1];
+      const cell = edit
+        ? `<input class="cell-input" type="number" min="0" max="100" value="${v==null?'':v}"
+             onchange="saveTest('${p.id}','${fach}','${esc(m)}',${sort},this.value)">`
+        : (v==null?'–':v+'%');
+      return {v, html:`<td>${cell}</td>`};
     });
-    const known=vals.filter(v=>v!=null);
+    const known=vals.map(x=>x.v).filter(v=>v!=null);
     const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
-    return `<tr><td class="name">${esc(fullName(p))}</td>${vals.map(v=>
-      `<td>${v==null?'–':v+'%'}</td>`).join('')}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
+    return `<tr><td class="name">${esc(fullName(p))}</td>${vals.map(x=>x.html).join('')}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
 }
+async function saveTest(personId, fach, monat, monatSort, value){
+  const v=parseNum(value);
+  let row=cache.tests.find(t=>t.fach===fach&&t.person_id===personId&&t.monat===monat);
+  if(row){
+    if(v==null){ await SB.from('tests').delete().eq('id',row.id); cache.tests=cache.tests.filter(t=>t!==row); }
+    else { const {error}=await SB.from('tests').update({ergebnis:v}).eq('id',row.id); if(error){toast(error.message,'err');return;} row.ergebnis=v; }
+  } else if(v!=null){
+    const {data,error}=await SB.from('tests').insert({fach,person_id:personId,monat,monat_sort:monatSort,
+      datum:new Date().toISOString().slice(0,10),ergebnis:v}).select().single();
+    if(error){toast(error.message,'err');return;} cache.tests.push(data);
+  }
+  renderBewertung(); toast('Gespeichert');
+}
 function renderGrades(fach, sel){
   const rows=cache.grades.filter(g=>g.fach===fach);
-  if(!rows.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
+  const edit=canEdit('bewertung');
+  const list=visibleStudents();
+  if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
   const head=`<tr><th class="name">Schüler</th><th>HA-Überpr.</th><th>Hausaufgaben</th>
     <th>Klausur 1</th><th>Klausur 2</th><th class="sum">Gesamt</th><th>Note</th></tr>`;
-  const body=students().map(p=>{
-    const g=rows.find(x=>x.person_id===p.id); if(!g) return '';
-    const c=v=>v==null?'–':Math.round(v)+'%';
+  const numCell=(g,f)=>{
+    const v=g?g[f]:null;
+    return edit
+      ? `<td><input class="cell-input" type="number" min="0" max="100" value="${v==null?'':Math.round(v)}"
+           onchange="saveGrade('${g?.person_id}','${fach}','${f}',this.value)"></td>`
+      : `<td${f==='gesamt'?' class="sum"':''}>${v==null?'–':Math.round(v)+'%'}</td>`;
+  };
+  const body=list.map(p=>{
+    let g=rows.find(x=>x.person_id===p.id);
+    if(!g){ if(!edit) return ''; g={person_id:p.id,fach}; }
+    const noteCell=edit
+      ? `<td><input class="cell-input" value="${esc(g.gesamtnote||'')}"
+           onchange="saveGrade('${p.id}','${fach}','gesamtnote',this.value)"></td>`
+      : `<td>${esc(g.gesamtnote||'')}</td>`;
     return `<tr><td class="name">${esc(fullName(p))}</td>
-      <td>${c(g.ha_ueberpruefung)}</td><td>${c(g.hausaufgaben)}</td>
-      <td>${c(g.klausur1)}</td><td>${c(g.klausur2)}</td>
-      <td class="sum">${c(g.gesamt)}</td><td>${esc(g.gesamtnote||'')}</td></tr>`;
+      ${numCell({...g,person_id:p.id},'ha_ueberpruefung')}${numCell({...g,person_id:p.id},'hausaufgaben')}
+      ${numCell({...g,person_id:p.id},'klausur1')}${numCell({...g,person_id:p.id},'klausur2')}
+      ${numCell({...g,person_id:p.id},'gesamt')}${noteCell}</tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
+}
+async function saveGrade(personId, fach, field, value){
+  const val = field==='gesamtnote' ? (value||null) : parseNum(value);
+  const {data,error}=await SB.from('grades')
+    .upsert({fach,person_id:personId,[field]:val},{onConflict:'fach,person_id'}).select().single();
+  if(error){ toast(error.message,'err'); return; }
+  const i=cache.grades.findIndex(x=>x.fach===fach&&x.person_id===personId);
+  if(i>=0) cache.grades[i]=data; else cache.grades.push(data);
+  renderBewertung(); toast('Gespeichert');
 }
 
 // ---------- ADMIN ----------
@@ -309,11 +366,55 @@ function renderAdmin(){
       <span class="muted">${fmtDate(a.datum)}</span>
       <button class="btn-ghost" style="margin-left:auto" onclick="delAnn('${a.id}')">Löschen</button></div>`).join('')
     || '<p class="muted">Keine Infos.</p>';
-  // Personen
-  $('#personAdminList').innerHTML = cache.people.map(p=>
-    `<div class="admin-row"><span>${esc(fullName(p))}</span>
-      <span class="muted">${esc(p.email||'—')}</span>
-      <span class="role-pill">${esc(p.rolle)}</span></div>`).join('');
+  // Benutzerverwaltung
+  renderPersonAdmin();
+}
+function renderPersonAdmin(){
+  const roleOpts=r=>['schueler','lehrer','admin'].map(x=>
+    `<option value="${x}" ${r===x?'selected':''}>${({schueler:'Schüler',lehrer:'Lehrer',admin:'Admin'})[x]}</option>`).join('');
+  $('#personAdminList').innerHTML = cache.people.map(p=>{
+    const perms = p.rolle==='lehrer'
+      ? `<div class="perm-row">${EDIT_AREAS.map(a=>
+          `<label><input type="checkbox" ${p.permissions?.[a.key]?'checked':''}
+            onchange="savePermission('${p.id}','${a.key}',this.checked)"> ${a.label}</label>`).join('')}</div>`
+      : '';
+    return `<div class="person-item ${p.aktiv?'':'inactive'}">
+      <div class="pi-head">
+        <span class="pi-name">${esc(fullName(p))}</span>
+        <input class="pi-email" type="email" value="${esc(p.email||'')}" placeholder="E-Mail"
+          onchange="savePerson('${p.id}','email',this.value)">
+        <select onchange="savePerson('${p.id}','rolle',this.value)">${roleOpts(p.rolle)}</select>
+        <label class="pi-active"><input type="checkbox" ${p.aktiv?'checked':''}
+          onchange="savePerson('${p.id}','aktiv',this.checked)"> aktiv</label>
+      </div>${perms}</div>`;
+  }).join('');
+}
+async function savePerson(id, field, value){
+  const {error}=await SB.from('people').update({[field]:value}).eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  const p=cache.people.find(x=>x.id===id); if(p) p[field]=value;
+  if(field==='rolle') renderPersonAdmin();          // Rechte-Block ein-/ausblenden
+  if(id===currentPerson?.id) afterSession();          // eigene Rechte sofort anwenden
+  toast('Gespeichert');
+}
+async function savePermission(id, area, value){
+  const p=cache.people.find(x=>x.id===id); if(!p) return;
+  const perms={...(p.permissions||{}), [area]:value};
+  const {error}=await SB.from('people').update({permissions:perms}).eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  p.permissions=perms;
+  if(id===currentPerson?.id) currentPerson.permissions=perms;
+  toast('Gespeichert');
+}
+async function addPerson(){
+  const vorname=$('#npVorname').value.trim(), nachname=$('#npNachname').value.trim();
+  const email=$('#npEmail').value.trim(), rolle=$('#npRolle').value;
+  if(!nachname){ toast('Nachname fehlt','err'); return; }
+  const {error}=await SB.from('people').insert({vorname,nachname,email:email||null,rolle,
+    sort:(Math.max(0,...cache.people.map(p=>p.sort||0))+10)});
+  if(error){ toast(error.message,'err'); return; }
+  $('#npVorname').value=$('#npNachname').value=$('#npEmail').value='';
+  await loadAll(); renderAdmin(); toast('Person angelegt');
 }
 async function addAnn(){
   const titel=$('#annTitle').value.trim(); if(!titel) return;
@@ -431,6 +532,7 @@ function bind(){
   $('#meetingSave').onclick=saveMeeting;
   $('#importBtn').onclick=runImport;
   $('#annAddBtn').onclick=addAnn;
+  $('#npAddBtn').onclick=addPerson;
 }
 
 // ---------- Start ----------

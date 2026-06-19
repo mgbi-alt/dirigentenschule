@@ -19,3 +19,11 @@ const SUBJECTS = [
 
 // Ziel pro Fach (Minuten/Woche)
 const PRACTICE_TARGET = 15;
+
+// Bearbeitbare Bereiche (für Lehrer-Rechte, pro Tabelle)
+const EDIT_AREAS = [
+  { key: 'zeiten',    label: 'Übezeiten' },
+  { key: 'theorie',   label: 'Musiktheorie' },
+  { key: 'tests',     label: 'Tests' },
+  { key: 'bewertung', label: 'Gesamtbewertung' },
+];

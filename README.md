@@ -37,6 +37,17 @@ Eigenständiges Projekt – komplett getrennt vom Chor-Manager (Cantamus).
   update people set rolle='admin', email='deine@mail.de' where nachname='Ens';
   ```
 
+### Rollen & Rechte
+- Einmalig die Migration `supabase_migration_permissions.sql` im SQL-Editor ausführen
+  (ergänzt die Spalte `people.permissions`).
+- **Admin:** darf alles, inkl. Benutzerverwaltung (Admin → Personen).
+- **Lehrer:** sieht alle Schülerdaten; Bearbeitungsrechte werden **pro Tabelle**
+  (Übezeiten, Musiktheorie, Tests, Gesamtbewertung) im Admin-Bereich per Häkchen vergeben.
+- **Schüler:** sieht nur die eigenen Daten; trägt eigene Übezeiten ein und hakt eigene
+  Musiktheorie-Aufgaben ab.
+- Hinweis: Die Rechteprüfung erfolgt aktuell in der App (RLS erlaubt eingeloggten Nutzern
+  generell Schreibzugriff). Für strikte Trennung auf DB-Ebene später RLS-Policies ergänzen.
+
 ### 3. Alt-Daten importieren (CSV)
 Im Tab **Admin → CSV-Import** die Fabrik-Exporte hochladen:
 | Typ | Datei |
