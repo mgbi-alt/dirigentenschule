@@ -9,3 +9,4 @@ node_modules/
 # Personenbezogene Alt-Daten (nur lokal importieren, NICHT committen!)
 hk_*.csv
 *-export.csv
+supabase_import_data.sql
