@@ -8,6 +8,9 @@ let currentPerson = null;          // Datensatz aus people (per E-Mail/auth_id)
 let isStaff = false;               // lehrer | admin
 let isAdmin = false;
 let seesAll = false;               // Lehrer/Klassenleitung/Admin sehen alle Schüler
+let realPerson = null;             // tatsächlich eingeloggte Person (für Admin-Ansicht-als)
+let realIsAdmin = false;
+let viewAsId = null;               // Admin schaut als diese Person
 
 // Rollen einer Person (Array 'roles' bevorzugt, Fallback altes 'rolle')
 function personRoles(p){
@@ -81,29 +84,10 @@ function applyAuthGate(){
   $('#appHeader').hidden = !inApp;
   $('#appMain').hidden = !inApp;
 }
-async function afterSession(){
-  isStaff=false; isAdmin=false; seesAll=false; currentPerson=null;
-  applyAuthGate();
-  if(session?.user){
-    // Person über auth_id oder E-Mail zuordnen
-    const email=session.user.email;
-    const { data } = await SB.from('people').select('*')
-      .or(`auth_id.eq.${session.user.id},email.eq.${email}`).limit(1);
-    currentPerson = data?.[0]||null;
-    if(currentPerson){
-      isAdmin = hasRole(currentPerson,'admin');
-      isStaff = isAdmin || hasRole(currentPerson,'lehrer') || hasRole(currentPerson,'klassenleitung');
-      seesAll = isStaff;
-      // auth_id nachtragen falls nur per E-Mail gematcht
-      if(!currentPerson.auth_id){
-        SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
-      }
-    }
-    $('#logoutBtn').hidden=false;
-    $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
-  }else{
-    $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
-  }
+function applyRoleFlags(){
+  isAdmin = hasRole(currentPerson,'admin');
+  isStaff = isAdmin || hasRole(currentPerson,'lehrer') || hasRole(currentPerson,'klassenleitung');
+  seesAll = isStaff;
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
   $('#newMeetingBtn').hidden = !canEdit('theorie');
   $('#annNewBtn').hidden = !canEdit('infos');
@@ -111,7 +95,45 @@ async function afterSession(){
   $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
   $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
+}
+async function afterSession(){
+  isStaff=false; isAdmin=false; seesAll=false; currentPerson=null;
+  realPerson=null; realIsAdmin=false; viewAsId=null;
+  applyAuthGate();
+  if(session?.user){
+    const email=session.user.email;
+    const { data } = await SB.from('people').select('*')
+      .or(`auth_id.eq.${session.user.id},email.eq.${email}`).limit(1);
+    currentPerson = data?.[0]||null;
+    realPerson = currentPerson;
+    if(currentPerson && !currentPerson.auth_id){
+      SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
+    }
+    $('#logoutBtn').hidden=false;
+    $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
+  }else{
+    $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
+  }
+  applyRoleFlags();
+  realIsAdmin = isAdmin;
   await loadAll();
+  fillViewAs();
+  renderActivePage();
+}
+function fillViewAs(){
+  const wrap=$('#viewAsWrap'); if(!wrap) return;
+  wrap.hidden = !realIsAdmin;
+  if(!realIsAdmin) return;
+  $('#viewAs').innerHTML = ['<option value="">Ansicht: Admin (ich)</option>']
+    .concat(cache.people.slice().sort(byName).map(p=>
+      `<option value="${p.id}" ${p.id===viewAsId?'selected':''}>als ${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`)).join('');
+}
+function setViewAs(id){
+  viewAsId = id||null;
+  currentPerson = viewAsId ? personById(viewAsId) : realPerson;
+  applyRoleFlags();
+  if(viewAsId && !isAdmin && $('.page.active')?.id==='page-admin') showPage('start');
+  $('#userBadge').textContent = viewAsId ? `Ansicht als: ${fullName(currentPerson)}` : (realPerson?fullName(realPerson):'');
   renderActivePage();
 }
 async function gateLogin(){
@@ -461,52 +483,85 @@ function klavierDisplay(r){
   const ids=(r.klavier_ids||[]).map(id=>personById(id)).filter(Boolean).map(personToken);
   return ids.length?ids.join(', '):(r.klavier||'');
 }
+function schuelerDisplay(r){
+  const ids=(r.schueler_ids||[]).map(id=>personById(id)).filter(Boolean).map(personToken);
+  return ids.length?ids.join(', '):(r.schueler||'');
+}
 function peopleSelectHtml(pool, selectedIds){
   const sel=new Set(selectedIds||[]);
   return pool.map(p=>`<option value="${p.id}" ${sel.has(p.id)?'selected':''}>${esc(fullName(p))}</option>`).join('');
 }
 function lessonIsMine(r, token){
-  if(currentPerson && ((r.lehrer_ids||[]).includes(currentPerson.id) || (r.klavier_ids||[]).includes(currentPerson.id))) return true;
+  if(currentPerson && ((r.lehrer_ids||[]).includes(currentPerson.id)
+    || (r.klavier_ids||[]).includes(currentPerson.id)
+    || (r.schueler_ids||[]).includes(currentPerson.id))) return true;
   if(!token) return false; const t=token.toLowerCase();
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
+function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
+const TT_SAS=['Musiktheorie','Gehörbildung'];   // Schüler als "S:"-Zeile
+function lessonFields(r){
+  return { ueber:r.ueberschrift||'', stu:schuelerDisplay(r), leh:lehrerDisplay(r), kla:klavierDisplay(r), raum:r.raum||'' };
+}
 function renderStundenplan(){
   fillPlanSelect();
-  const planId=currentPlanId();
+  const planId=currentPlanId(), base=basePlan();
   const view=$('#ttView')?.value||'all';
   const edit=canEdit('stundenplan') && view==='all';
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
+  const diffMode = base && planId!==base.id && view==='all';
+  const baseRows = diffMode ? cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===base.id) : [];
+  const baseByKey = new Map(baseRows.map(r=>[lessonKey(r),r]));
   const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
-  const slots=[...new Map(rows.map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
+  const planKeys=new Set(rows.map(lessonKey));
+  const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
-  const sAsLine=['Musiktheorie','Gehörbildung'];   // hier Schüler als "S:"-Zeile
+  const line=(prefix,cur,old,changed,cls)=> changed
+    ? `<div class="tt-meta tt-chg">${prefix}${old?`<s>${esc(old)}</s> `:''}${cur?esc(cur):'<em>–</em>'}</div>`
+    : (cur?`<div class="${cls||'tt-meta'}">${prefix}${esc(cur)}</div>`:'');
   const cellHtml=r=>{
+    const baseR = diffMode ? baseByKey.get(lessonKey(r)) : null;
+    const isNew = diffMode && !baseR;
+    const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
+    const ch=k=> !!baseR && (c[k]||'')!==(b[k]||'');
+    const sL=TT_SAS.includes(r.fach)?'S: ':'';
     const lines=[];
-    if(r.ueberschrift) lines.push(`<div class="tt-head">${esc(r.ueberschrift)}</div>`);
-    if(r.schueler){
-      lines.push(sAsLine.includes(r.fach)
-        ? `<div class="tt-meta">S: ${esc(r.schueler)}</div>`
-        : `<div class="tt-stu">${esc(r.schueler)}</div>`);
-    }
-    const leh=lehrerDisplay(r), kla=klavierDisplay(r);
-    if(leh)    lines.push(`<div class="tt-meta">L: ${esc(leh)}</div>`);
-    if(kla)    lines.push(`<div class="tt-meta">K: ${esc(kla)}</div>`);
-    if(r.raum) lines.push(`<div class="tt-room">R: ${esc(r.raum)}</div>`);
-    const pad = r.ueberschrift?5:4;
-    while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');  // gleiche Höhe
-    return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${lines.join('')}</div>`;
+    if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
+    if(c.stu||ch('stu'))     lines.push(line(sL, c.stu, b.stu, ch('stu'), sL?'tt-meta':'tt-stu'));
+    if(c.leh||ch('leh'))     lines.push(line('L: ', c.leh, b.leh, ch('leh')));
+    if(c.kla||ch('kla'))     lines.push(line('K: ', c.kla, b.kla, ch('kla')));
+    if(c.raum||ch('raum'))   lines.push(line('R: ', c.raum, b.raum, ch('raum'), 'tt-room'));
+    const pad=c.ueber?5:4; while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
+    const changed = isNew || (baseR && ['ueber','stu','leh','kla','raum'].some(ch));
+    const cls = isNew?'tt-new':(changed?'tt-changed':'');
+    const badge = isNew?'<span class="tt-badge">neu</span>':'';
+    return `<div class="tt-cell ${cls} ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
   };
-  const subjectsHtml=slotRows=>{
-    const fachs=[...new Set(slotRows.map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
+  const removedCell=r=>{
+    const c=lessonFields(r), sL=TT_SAS.includes(r.fach)?'S: ':'';
+    const lines=[
+      c.ueber?`<div class="tt-head"><s>${esc(c.ueber)}</s></div>`:'',
+      c.stu?`<div class="tt-meta"><s>${esc(sL+c.stu)}</s></div>`:'',
+      c.leh?`<div class="tt-meta"><s>L: ${esc(c.leh)}</s></div>`:'',
+      c.kla?`<div class="tt-meta"><s>K: ${esc(c.kla)}</s></div>`:'',
+      c.raum?`<div class="tt-room"><s>R: ${esc(c.raum)}</s></div>`:'',
+    ].filter(Boolean);
+    while(lines.length<4) lines.push('<div class="tt-meta">&nbsp;</div>');
+    return `<div class="tt-cell tt-removed"><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
+  };
+  const subjectsHtml=(planRows,zeit)=>{
+    const removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planKeys.has(lessonKey(r))) : [];
+    const fachs=[...new Set(planRows.concat(removed).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
-      const cells=slotRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml).join('');
-      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${cells}</div></div>`;
+      const pc=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml);
+      const rc=removed.filter(r=>r.fach===f).map(removedCell);
+      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
     }).join('');
   };
   if(view==='mine' && !token){
-    $('#ttGrid').innerHTML='<p class="muted">Für deinen Account ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>';
+    $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>';
     return;
   }
   let html=slots.map(zeit=>{
@@ -521,8 +576,9 @@ function renderStundenplan(){
       if(!mine.length) return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
       slotRows=mine;
     }
-    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows)}</div></div>`;
+    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows,zeit)}</div></div>`;
   }).join('');
+  if(diffMode) html=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`+html;
   $('#ttGrid').innerHTML = html || '<p class="muted">Dieser Plan ist leer.</p>';
 }
 async function copyPlan(){
@@ -537,7 +593,7 @@ async function copyPlan(){
       .select().single();
     if(error){ toast(error.message,'err'); return false; }
     const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
-      zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler,
+      zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
       lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort}));
     if(copies.length){
       const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
@@ -555,7 +611,9 @@ function lessonForm(r){
   return `<label>Zeit<input id="tl_zeit" value="${esc(r.zeit||'')}" placeholder="z.B. 10:00 - 10:45"></label>
     <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
-    <label>Schüler<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
+    <label>Schüler (Mehrfachauswahl mit Strg/⌘)
+      <select id="tl_stuids" multiple size="5">${peopleSelectHtml(students().slice().sort(byName), r.schueler_ids)}</select></label>
+    <label>Schüler-Freitext (optional)<input id="tl_stu" value="${esc(r.schueler||'')}" placeholder="falls nicht in der Liste"></label>
     <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
       <select id="tl_lehids" multiple size="5">${peopleSelectHtml(peopleForSubject(fach,teacherPeople), r.lehrer_ids)}</select></label>
     <label>Lehrer-Kürzel/Freitext (optional)<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
@@ -574,9 +632,11 @@ function refreshLessonPools(){
 function readLessonForm(){
   const ids=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
   const kids=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
+  const sids=[...$('#tl_stuids').selectedOptions].map(o=>o.value);
   return { zeit:$('#tl_zeit').value.trim(), fach:$('#tl_fach').value,
     ueberschrift:$('#tl_head').value.trim()||null,
     schueler:$('#tl_stu').value.trim()||null,
+    schueler_ids: sids.length?sids:null,
     lehrer_ids: ids.length?ids:null,
     lehrer:$('#tl_leh').value.trim()||null,
     klavier_ids: kids.length?kids:null,
@@ -893,6 +953,7 @@ function bind(){
   $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#gateEmail').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#logoutBtn').onclick=()=>SB.auth.signOut();
+  $('#viewAs').onchange=function(){ setViewAs(this.value); };
   $('#contactSearch').oninput=renderContacts;
   $$('.grades-cols-btn').forEach(b=>b.onclick=()=>manageGradeCols(b.dataset.fach));
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);
