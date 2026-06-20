@@ -208,9 +208,15 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-subjects{display:flex;gap:12px;flex-wrap:wrap;flex:1}
 .tt-subject{flex:1;min-width:150px}
 .tt-fach{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px}
-.tt-cell{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;font-size:12.5px;line-height:1.45}
+.tt-cells{display:flex;flex-direction:column;gap:6px}
+.tt-cells.row{flex-direction:row;flex-wrap:wrap}
+.tt-cells.row .tt-cell{flex:1;min-width:130px}
+.tt-cell{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;
+  font-size:12.5px;line-height:1.45;min-height:80px;display:flex;flex-direction:column;gap:1px}
 .tt-cell.editable{cursor:pointer}
 .tt-cell.editable:hover{border-color:var(--accent)}
+.tt-free{background:var(--green-bg);border:1px solid var(--border);border-radius:var(--r);
+  text-align:center;color:var(--text2);padding:10px;font-size:13px;flex:1}
 .tt-stu{font-weight:600;color:var(--text)}
 .tt-cell .tt-meta{color:var(--text2)}
 .tt-cell .tt-room{color:var(--accent2)}

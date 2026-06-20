@@ -20,7 +20,7 @@ function visibleStudents(){
   if(seesAll || !currentPerson || currentPerson.rolle!=='schueler') return students();
   return students().filter(p=>p.id===currentPerson.id);
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -99,6 +99,7 @@ async function afterSession(){
   $('#annNewBtn').hidden = !canEdit('infos');
   $('#ptAddBtn').hidden = !currentPerson;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
+  $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
   await loadAll();
   renderActivePage();
 }
@@ -120,7 +121,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -129,11 +130,12 @@ async function loadAll(){
     SB.from('tests').select('*'),
     SB.from('grades').select('*'),
     SB.from('timetable').select('*'),
+    SB.from('plans').select('*').order('sort'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
-  cache.tt=tt.data||[];
+  cache.tt=tt.data||[]; cache.plans=plans.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>p.rolle==='schueler'&&p.aktiv);
@@ -385,34 +387,87 @@ async function uploadSiteDoc(key, file){
 }
 
 // ---------- STUNDENPLAN ----------
+function basePlan(){ return cache.plans.find(p=>p.is_base)||cache.plans[0]; }
+function currentPlanId(){ const v=$('#ttPlan')?.value; return v||basePlan()?.id; }
+function fillPlanSelect(){
+  const sel=$('#ttPlan'); if(!sel) return; const cur=sel.value;
+  const ordered=[...cache.plans].sort((a,b)=>(b.is_base?1:0)-(a.is_base?1:0) || (a.sort-b.sort));
+  sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  else { const b=basePlan(); if(b) sel.value=b.id; }
+}
+function myToken(){
+  if(!currentPerson) return null;
+  const v=(currentPerson.vorname||'').trim(), n=(currentPerson.nachname||'').trim();
+  return (v&&n)?`${v} ${n[0]}.`:null;
+}
+function lessonIsMine(r, token){
+  if(!token) return false; const t=token.toLowerCase();
+  return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
+}
 function renderStundenplan(){
-  const edit=canEdit('stundenplan');
-  const rows=[...cache.tt].filter(r=>r.tag==='samstag');
-  // Slots in Reihenfolge
+  fillPlanSelect();
+  const planId=currentPlanId();
+  const view=$('#ttView')?.value||'all';
+  const edit=canEdit('stundenplan') && view==='all';
+  $('#ttAddBtn').hidden = !edit;
+  const token=view==='mine'?myToken():null;
+  const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
   const slots=[...new Map(rows.map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
-  let html=slots.map(zeit=>{
-    const slotRows=rows.filter(r=>r.zeit===zeit);
-    // Pause als Band
-    if(slotRows.length===1 && slotRows[0].fach==='Pause'){
-      return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-pause">Pause</div></div>`;
-    }
+  const cellHtml=r=>{
+    const meta=[
+      r.lehrer?`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`:'',
+      r.klavier?`<div class="tt-meta">K: ${esc(r.klavier)}</div>`:'',
+      r.raum?`<div class="tt-room">R: ${esc(r.raum)}</div>`:'',
+    ].join('');
+    return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>
+      ${r.schueler?`<div class="tt-stu">${esc(r.schueler)}</div>`:''}${meta}</div>`;
+  };
+  const subjectsHtml=slotRows=>{
     const fachs=[...new Set(slotRows.map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
-    const cols=fachs.map(f=>{
-      const cells=slotRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(r=>{
-        const meta=[
-          r.lehrer?`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`:'',
-          r.klavier?`<div class="tt-meta">K: ${esc(r.klavier)}</div>`:'',
-          r.raum?`<div class="tt-room">R: ${esc(r.raum)}</div>`:'',
-        ].join('');
-        return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>
-          ${r.schueler?`<div class="tt-stu">${esc(r.schueler)}</div>`:''}${meta}</div>`;
-      }).join('');
-      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div>${cells}</div>`;
+    return fachs.map(f=>{
+      const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
+      const cells=slotRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml).join('');
+      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${cells}</div></div>`;
     }).join('');
-    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${cols}</div></div>`;
+  };
+  if(view==='mine' && !token){
+    $('#ttGrid').innerHTML='<p class="muted">Für deinen Account ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>';
+    return;
+  }
+  let html=slots.map(zeit=>{
+    let slotRows=rows.filter(r=>r.zeit===zeit);
+    if(slotRows.length && slotRows.every(r=>r.fach==='Pause'))
+      return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-pause">Pause</div></div>`;
+    if(token){
+      const mine=slotRows.filter(r=>lessonIsMine(r,token));
+      if(!mine.length) return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
+      slotRows=mine;
+    }
+    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows)}</div></div>`;
   }).join('');
-  $('#ttGrid').innerHTML = html || '<p class="muted">Noch kein Stundenplan. Über „+ Eintrag" anlegen.</p>';
+  $('#ttGrid').innerHTML = html || '<p class="muted">Dieser Plan ist leer.</p>';
+}
+async function copyPlan(){
+  const base=basePlan(); if(!base){ toast('Kein Grundplan vorhanden','err'); return; }
+  const body=`<label>Name<input id="cp_name" placeholder="z.B. Treffen 14.06.2026"></label>
+    <label>Datum<input type="date" id="cp_datum"></label>
+    <p class="muted">Erstellt eine Kopie des Grundplans, die du anpassen kannst (Vertretung/Ausfall).</p>`;
+  openDialog('Neuen Plan anlegen (Kopie Grundplan)', body, async()=>{
+    const name=$('#cp_name').value.trim(); if(!name){ toast('Name fehlt','err'); return false; }
+    const {data:plan,error}=await SB.from('plans')
+      .insert({name, datum:$('#cp_datum').value||null, is_base:false, sort:(Math.max(0,...cache.plans.map(p=>p.sort||0))+1)})
+      .select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
+      zeit_sort:r.zeit_sort, fach:r.fach, schueler:r.schueler, lehrer:r.lehrer, klavier:r.klavier, raum:r.raum, sort:r.sort}));
+    if(copies.length){
+      const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
+      if(e2){ toast(e2.message,'err'); return false; } cache.tt.push(...(ins||[]));
+    }
+    cache.plans.push(plan); fillPlanSelect(); $('#ttPlan').value=plan.id; renderStundenplan(); toast('Plan angelegt');
+  });
 }
 function lessonForm(r){
   r=r||{};
@@ -441,9 +496,10 @@ function editLesson(id){
   });
 }
 function addLesson(){
+  const planId=currentPlanId();
   openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:'samstag'}), async()=>{
-    const rec=readLessonForm(); rec.tag='samstag'; rec.zeit_sort=slotSortFor(rec.zeit);
-    rec.sort=(Math.max(0,...cache.tt.filter(x=>x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
+    const rec=readLessonForm(); rec.tag='samstag'; rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
+    rec.sort=(Math.max(0,...cache.tt.filter(x=>x.plan_id===planId&&x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
     const {data,error}=await SB.from('timetable').insert(rec).select().single();
     if(error){ toast(error.message,'err'); return false; }
     cache.tt.push(data); renderStundenplan(); toast('Gespeichert');
@@ -743,6 +799,9 @@ function bind(){
   $('#npAddBtn').onclick=addPerson;
   $('#ptAddBtn').onclick=createPractice;
   $('#ttAddBtn').onclick=addLesson;
+  $('#ttNewPlanBtn').onclick=copyPlan;
+  $('#ttPlan').onchange=renderStundenplan;
+  $('#ttView').onchange=renderStundenplan;
 
   // Generischer Dialog
   $('#dlgCancel').onclick=closeDialog;

@@ -105,7 +105,17 @@
   <section class="page" id="page-stundenplan">
     <div class="toolbar">
       <h2 class="section-h">Stundenplan Samstag</h2>
-      <button class="btn-primary" id="ttAddBtn" hidden>+ Eintrag</button>
+      <div class="filters">
+        <label>Plan <select id="ttPlan"></select></label>
+        <label>Ansicht
+          <select id="ttView">
+            <option value="all">Gesamtplan</option>
+            <option value="mine">Mein Plan</option>
+          </select>
+        </label>
+        <button class="btn-ghost" id="ttNewPlanBtn" hidden>+ Plan (Kopie)</button>
+        <button class="btn-primary" id="ttAddBtn" hidden>+ Eintrag</button>
+      </div>
     </div>
     <div id="ttGrid"></div>
   </section>

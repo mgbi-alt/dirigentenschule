@@ -12,8 +12,10 @@ Eigenständiges Projekt – komplett getrennt vom Chor-Manager (Cantamus).
 - **Info** – Stundenplan Freitag/Samstag + Terminplan als PDF (Admin lädt hoch, alle sehen/laden).
 - **Stundenplan** – editierbarer Online-Stundenplan (Samstag) als Grid: Zeitslots × Fächer
   (Dirigieren/Stimmbildung/Klavier/Gehörbildung, Gruppen, Pausen). Bearbeiten per Dialog,
-  Recht `stundenplan` (Admin immer). Migration `supabase_migration_v3.sql` +
+  Recht `stundenplan` (Admin immer). Migration `supabase_migration_v3.sql` + `_v4.sql` +
   `seed_stundenplan_samstag.sql` (Daten aus der PDF).
+  - **Plan-Versionen:** Grundplan + pro Treffen eine Kopie („+ Plan (Kopie)") für Vertretung/Ausfall.
+  - **Mein Plan:** Ansicht reduziert auf die eigenen Stunden (Match über „Vorname N."); Freistunden werden angezeigt.
 - **Hausaufgaben → Musiktheorie** – pro Treffen Aufgaben-PDF + Begleitdokumente zum
   Download, Schüler haken erledigte Aufgaben ab. Übersichtstabelle (Zeilen = Schüler,
   Spalten = Treffen) mit Erfüllungsgrad in % und Ø-Spalte.
