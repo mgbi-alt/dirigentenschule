@@ -26,4 +26,15 @@ const EDIT_AREAS = [
   { key: 'theorie',   label: 'Musiktheorie' },
   { key: 'tests',     label: 'Tests' },
   { key: 'bewertung', label: 'Gesamtbewertung' },
+  { key: 'infos',     label: 'Infos (Startseite)' },
 ];
+
+// Info-Tab: feste PDF-Pläne
+const SITE_DOCS = [
+  { key: 'stundenplan_fr', label: 'Stundenplan Freitag' },
+  { key: 'stundenplan_sa', label: 'Stundenplan Samstag' },
+  { key: 'terminplan',     label: 'Terminplan' },
+];
+
+// erlaubte Übezeiten-Werte (Minuten) im Dialog
+const MIN_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40];

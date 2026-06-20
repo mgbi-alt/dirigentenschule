@@ -7,13 +7,17 @@ Progressive Web App für die Dirigentenschule: Startseite mit Infos, Hausaufgabe
 Eigenständiges Projekt – komplett getrennt vom Chor-Manager (Cantamus).
 
 ## Funktionen
-- **Start** – Begrüßung, Kennzahlen, aktuelle Infos.
+- **Start** – Begrüßung, Kennzahlen, Infos mit Rich-Text-Editor (Schriftarten, Fett/Kursiv,
+  Listen, Bilder/PDFs einfügen). Admin immer, sonst per Recht `infos`.
+- **Info** – Stundenplan Freitag/Samstag + Terminplan als PDF (Admin lädt hoch, alle sehen/laden).
 - **Hausaufgaben → Musiktheorie** – pro Treffen Aufgaben-PDF + Begleitdokumente zum
   Download, Schüler haken erledigte Aufgaben ab. Übersichtstabelle (Zeilen = Schüler,
   Spalten = Treffen) mit Erfüllungsgrad in % und Ø-Spalte.
 - **Hausaufgaben → Übezeiten** – Minuten pro KW & Fach (Dirigieren, Gehörbildung,
   Stimmbildung, Klavier) + Gesamt. Ampel: 0–5 rot, 10 gelb, 15+ grün (Ziel 15 Min/Fach).
-- **Kontakte** – Name, Gemeinde, E-Mail, Telefon, Bild (lesend).
+- **Kontakte** – Name, Gemeinde, E-Mail, Telefon, Bild. Jeder bearbeitet den eigenen
+  Kontakt (inkl. Bild-Upload), Admin alle.
+- Alle Werteingaben (Übezeiten, Tests, Bewertungen) erfolgen über **Dialoge**, nicht inline.
 - **Bewertungen** – 5-Minuten-Tests + Gesamtbewertung für Harmonielehre und Gehörbildung.
 - **Admin** – CSV-Import (Fabrik-Exporte), Infos pflegen, Personen.
 
@@ -38,8 +42,8 @@ Eigenständiges Projekt – komplett getrennt vom Chor-Manager (Cantamus).
   ```
 
 ### Rollen & Rechte
-- Einmalig die Migration `supabase_migration_permissions.sql` im SQL-Editor ausführen
-  (ergänzt die Spalte `people.permissions`).
+- Einmalig die Migration `supabase_migration_v2.sql` im SQL-Editor ausführen
+  (ergänzt `people.permissions` und die Tabelle `site_docs` für die Pläne).
 - **Admin:** darf alles, inkl. Benutzerverwaltung (Admin → Personen).
 - **Lehrer:** sieht alle Schülerdaten; Bearbeitungsrechte werden **pro Tabelle**
   (Übezeiten, Musiktheorie, Tests, Gesamtbewertung) im Admin-Bereich per Häkchen vergeben.

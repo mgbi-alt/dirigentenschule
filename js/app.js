@@ -20,7 +20,7 @@ function visibleStudents(){
   if(seesAll || !currentPerson || currentPerson.rolle!=='schueler') return students();
   return students().filter(p=>p.id===currentPerson.id);
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -37,6 +37,25 @@ function parseNum(s){
   const m=String(s).replace(/[^0-9,.\-]/g,'').replace(',','.');
   if(m==='') return null;
   const n=parseFloat(m); return isNaN(n)?null:n;
+}
+
+// ---------- Generischer Dialog ----------
+let _dlgSave=null;
+function openDialog(title, bodyHtml, onSave){
+  $('#dlgTitle').textContent=title;
+  $('#dlgBody').innerHTML=bodyHtml;
+  _dlgSave=onSave;
+  $('#dlg').hidden=false;
+}
+function closeDialog(){ $('#dlg').hidden=true; _dlgSave=null; }
+
+// ---------- Datei-Upload (Storage-Bucket 'docs') ----------
+async function uploadFile(file, prefix){
+  const ext=(file.name.split('.').pop()||'bin').toLowerCase();
+  const path=`${prefix}/${(crypto.randomUUID?crypto.randomUUID():Date.now())}.${ext}`;
+  const { error }=await SB.storage.from('docs').upload(path, file, {upsert:true});
+  if(error){ toast('Upload-Fehler: '+error.message,'err'); return null; }
+  return SB.storage.from('docs').getPublicUrl(path).data.publicUrl;
 }
 
 // ---------- Auth ----------
@@ -70,6 +89,8 @@ async function afterSession(){
   }
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
   $('#newMeetingBtn').hidden = !canEdit('theorie');
+  $('#annNewBtn').hidden = !canEdit('infos');
+  $('#ptAddBtn').hidden = !currentPerson;
   await loadAll();
   renderActivePage();
 }
@@ -82,8 +103,9 @@ async function login(){
 
 // ---------- Data ----------
 async function loadAll(){
-  // Öffentlich: Infos
-  cache.ann = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
+  // Öffentlich: Infos + Pläne
+  cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
+  cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
   const [people,practice,meetings,tasks,status,tests,grades] = await Promise.all([
     SB.from('people').select('*').order('sort'),
@@ -109,7 +131,7 @@ function showPage(name){
 }
 function renderActivePage(){
   const active = $('.page.active')?.id.replace('page-','');
-  ({start:renderStart, ha:renderHA, kontakte:renderContacts,
+  ({start:renderStart, ha:renderHA, info:renderInfoTab, kontakte:renderContacts,
     bewertung:renderBewertung, admin:renderAdmin}[active]||(()=>{}))();
 }
 
@@ -123,9 +145,13 @@ function renderStart(){
   ];
   $('#startCards').innerHTML = cards.map(c=>
     `<div class="stat-card"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('');
+  const canInfo=canEdit('infos');
   $('#announcementsList').innerHTML = cache.ann.length
     ? cache.ann.map(a=>`<div class="ann-item"><span class="date">${fmtDate(a.datum)}</span>
-        <h4>${esc(a.titel)}</h4><p>${esc(a.text||'')}</p></div>`).join('')
+        <h4>${esc(a.titel)}</h4><div class="ann-body">${a.text||''}</div>
+        ${canInfo?`<div class="ann-actions">
+          <button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
+          <button class="btn-ghost" onclick="delAnn('${a.id}')">Löschen</button></div>`:''}</div>`).join('')
     : '<p class="muted">Noch keine Infos.</p>';
 }
 
@@ -233,27 +259,59 @@ function renderPractice(){
     const sum=SUBJECTS.reduce((s,sub)=>s+(+r[sub.key]||0),0);
     const cells=SUBJECTS.map(sub=>{
       const v=+r[sub.key]||0;
-      const inner = canEditRow
-        ? `<input class="cell-input" type="number" step="5" min="0" value="${v}"
-             onchange="savePractice('${r.id}','${sub.key}',this.value)">`
-        : v;
-      return `<td class="${practiceCellClass(v)}">${inner} <span class="muted">Min</span></td>`;
+      return `<td class="${practiceCellClass(v)}">${v} <span class="muted">Min</span></td>`;
     }).join('');
-    return `<tr><td>${r.jahr}</td><td>${r.kw}</td><td>${fmtDate(r.datum)}</td>
+    return `<tr class="${canEditRow?'cell-edit':''}" ${canEditRow?`onclick="editPractice('${r.id}')"`:''}>
+      <td>${r.jahr}</td><td>${r.kw}</td><td>${fmtDate(r.datum)}</td>
       <td class="name">${esc(fullName(p))}</td>${cells}
       <td class="sum ${gesamtClass(sum)}">${sum} Min</td>
-      <td><input type="checkbox" ${r.ferien?'checked':''} ${canEditRow?'':'disabled'}
-        onchange="savePractice('${r.id}','ferien',this.checked)"></td></tr>`;
+      <td>${r.ferien?'✓':'–'}</td></tr>`;
   }).join('');
   $('#practiceTable').innerHTML = rows.length
     ? `<table>${head}${body}</table>` : '<p class="muted" style="padding:14px">Keine Einträge für diese Auswahl.</p>';
 }
-async function savePractice(id, field, value){
-  const val = field==='ferien'?value:(parseInt(value)||0);
-  const { error } = await SB.from('practice_times').update({[field]:val, updated_at:new Date().toISOString()}).eq('id',id);
-  if(error){ toast(error.message,'err'); return; }
-  const r=cache.practice.find(x=>x.id===id); if(r) r[field]=val;
-  renderPractice(); toast('Gespeichert');
+function isoWeek(d){
+  d=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day=d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()+4-day);
+  const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  return Math.ceil(((d-ys)/86400000+1)/7);
+}
+function minOpts(v){ return MIN_OPTIONS.map(n=>`<option ${n==v?'selected':''}>${n}</option>`).join(''); }
+function editPractice(id){
+  const r=cache.practice.find(x=>x.id===id); if(!r) return;
+  const body=SUBJECTS.map(s=>`<label>${s.label} (Min)<select id="dp_${s.key}">${minOpts(+r[s.key]||0)}</select></label>`).join('')
+    +`<label class="chk"><input type="checkbox" id="dp_ferien" ${r.ferien?'checked':''}> Ferien</label>`;
+  openDialog(`${fullName(personById(r.person_id))} – KW ${r.kw}/${r.jahr}`, body, async()=>{
+    const upd={ferien:$('#dp_ferien').checked, updated_at:new Date().toISOString()};
+    SUBJECTS.forEach(s=>upd[s.key]=parseInt($('#dp_'+s.key).value)||0);
+    const {error}=await SB.from('practice_times').update(upd).eq('id',r.id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(r,upd); renderPractice(); toast('Gespeichert');
+  });
+}
+function createPractice(){
+  if(!currentPerson){ toast('Bitte anmelden','err'); return; }
+  const lockSelf=!canEdit('zeiten'), me=currentPerson;
+  const persons=lockSelf?[me]:students();
+  const now=new Date();
+  const body=`<label>Schüler<select id="dp_person" ${lockSelf?'disabled':''}>
+      ${persons.map(p=>`<option value="${p.id}" ${p.id===me.id?'selected':''}>${esc(fullName(p))}</option>`).join('')}</select></label>
+    <label>Jahr<input type="number" id="dp_jahr" value="${now.getFullYear()}"></label>
+    <label>KW<input type="number" id="dp_kw" min="1" max="53" value="${isoWeek(now)}"></label>
+    ${SUBJECTS.map(s=>`<label>${s.label} (Min)<select id="dp_${s.key}">${minOpts(0)}</select></label>`).join('')}
+    <label class="chk"><input type="checkbox" id="dp_ferien"> Ferien</label>`;
+  openDialog('Neuer Übezeit-Eintrag', body, async()=>{
+    const pid=lockSelf?me.id:$('#dp_person').value;
+    const rec={person_id:pid, jahr:parseInt($('#dp_jahr').value)||now.getFullYear(),
+      kw:parseInt($('#dp_kw').value)||isoWeek(now), datum:new Date().toISOString().slice(0,10),
+      ferien:$('#dp_ferien').checked};
+    SUBJECTS.forEach(s=>rec[s.key]=parseInt($('#dp_'+s.key).value)||0);
+    const {data,error}=await SB.from('practice_times').upsert(rec,{onConflict:'person_id,jahr,kw'}).select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    const i=cache.practice.findIndex(x=>x.person_id===pid&&x.jahr===rec.jahr&&x.kw===rec.kw);
+    if(i>=0) cache.practice[i]=data; else cache.practice.push(data);
+    fillPracticeFilters(); renderPractice(); toast('Gespeichert');
+  });
 }
 
 // ---------- KONTAKTE ----------
@@ -265,6 +323,7 @@ function renderContacts(){
   const roleLabel={schueler:'Schüler',lehrer:'Lehrer',admin:'Admin'};
   $('#contactsGrid').innerHTML = list.map(p=>{
     const img = p.bild_url?`<img src="${esc(p.bild_url)}" alt="">`:`<div class="contact-ph">👤</div>`;
+    const mayEdit = isAdmin || (currentPerson&&currentPerson.id===p.id);
     return `<div class="contact-card">${img}<div>
       <div class="nm">${esc(fullName(p))}</div>
       <div class="meta">
@@ -273,8 +332,49 @@ function renderContacts(){
         ${p.telefon?`<a href="tel:${esc(p.telefon)}">${esc(p.telefon)}</a>`:''}
       </div>
       <span class="role-pill">${roleLabel[p.rolle]||p.rolle}</span>
+      ${mayEdit?`<div><button class="btn-ghost edit-btn" onclick="editContact('${p.id}')">Bearbeiten</button></div>`:''}
     </div></div>`;
   }).join('')||'<p class="muted">Keine Kontakte gefunden.</p>';
+}
+function editContact(personId){
+  const p=personById(personId); if(!p) return;
+  const body=`<label>Gemeinde<input type="text" id="dc_gem" value="${esc(p.gemeinde||'')}"></label>
+    <label>E-Mail<input type="email" id="dc_mail" value="${esc(p.email||'')}"></label>
+    <label>Telefon<input type="text" id="dc_tel" value="${esc(p.telefon||'')}"></label>
+    <label>Bild ${p.bild_url?'(neues ersetzt das alte)':''}<input type="file" id="dc_img" accept="image/*"></label>`;
+  openDialog(`${fullName(p)} – Kontakt bearbeiten`, body, async()=>{
+    const upd={gemeinde:$('#dc_gem').value||null, email:$('#dc_mail').value||null, telefon:$('#dc_tel').value||null};
+    const f=$('#dc_img').files[0];
+    if(f){ const url=await uploadFile(f,'avatars'); if(url) upd.bild_url=url; }
+    const {error}=await SB.from('people').update(upd).eq('id',p.id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(p,upd); renderContacts(); toast('Gespeichert');
+  });
+}
+
+// ---------- INFO-TAB (Pläne) ----------
+function renderInfoTab(){
+  $('#infoDocs').innerHTML = SITE_DOCS.map(d=>{
+    const doc=cache.docs.find(x=>x.key===d.key);
+    const viewer = doc?.url
+      ? `<iframe src="${esc(doc.url)}#toolbar=1" title="${esc(d.label)}"></iframe>
+         <div style="margin-top:8px"><a class="dl-link" href="${esc(doc.url)}" target="_blank">⬇ Herunterladen</a></div>`
+      : `<div class="doc-empty">Noch kein PDF hochgeladen.</div>`;
+    const upload = isAdmin
+      ? `<label class="btn-primary" style="cursor:pointer">PDF hochladen
+          <input type="file" accept="application/pdf" hidden onchange="uploadSiteDoc('${d.key}',this.files[0])"></label>`
+      : '';
+    return `<div class="doc-card"><div class="doc-head"><h3>${esc(d.label)}</h3>${upload}</div>${viewer}</div>`;
+  }).join('');
+}
+async function uploadSiteDoc(key, file){
+  if(!file) return;
+  const url=await uploadFile(file,'plaene'); if(!url) return;
+  const {error}=await SB.from('site_docs').upsert({key,url,updated_at:new Date().toISOString()},{onConflict:'key'});
+  if(error){ toast(error.message,'err'); return; }
+  const i=cache.docs.findIndex(x=>x.key===key);
+  if(i>=0) cache.docs[i].url=url; else cache.docs.push({key,url});
+  renderInfoTab(); toast('Hochgeladen');
 }
 
 // ---------- BEWERTUNGEN ----------
@@ -295,11 +395,11 @@ function renderTests(fach, sel){
       const r=rows.find(x=>x.person_id===p.id&&x.monat===m);
       const v=r?Math.round(r.ergebnis):null;
       const sort=monthMap[i][1];
-      const cell = edit
-        ? `<input class="cell-input" type="number" min="0" max="100" value="${v==null?'':v}"
-             onchange="saveTest('${p.id}','${fach}','${esc(m)}',${sort},this.value)">`
-        : (v==null?'–':v+'%');
-      return {v, html:`<td>${cell}</td>`};
+      const txt=(v==null?'–':v+'%');
+      const td = edit
+        ? `<td class="cell-edit" onclick="editTest('${p.id}','${fach}','${esc(m)}',${sort})">${txt}</td>`
+        : `<td>${txt}</td>`;
+      return {v, html:td};
     });
     const known=vals.map(x=>x.v).filter(v=>v!=null);
     const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
@@ -307,16 +407,23 @@ function renderTests(fach, sel){
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
 }
+function editTest(personId, fach, monat, monatSort){
+  const r=cache.tests.find(t=>t.fach===fach&&t.person_id===personId&&t.monat===monat);
+  const body=`<label>${esc(monat)} – Ergebnis (%)
+    <input type="number" id="dt_e" min="0" max="100" value="${r?Math.round(r.ergebnis):''}"></label>
+    <p class="muted">Leer lassen löscht den Eintrag.</p>`;
+  openDialog(`${fullName(personById(personId))} – ${monat}`, body, ()=>saveTest(personId,fach,monat,monatSort,$('#dt_e').value));
+}
 async function saveTest(personId, fach, monat, monatSort, value){
   const v=parseNum(value);
   let row=cache.tests.find(t=>t.fach===fach&&t.person_id===personId&&t.monat===monat);
   if(row){
     if(v==null){ await SB.from('tests').delete().eq('id',row.id); cache.tests=cache.tests.filter(t=>t!==row); }
-    else { const {error}=await SB.from('tests').update({ergebnis:v}).eq('id',row.id); if(error){toast(error.message,'err');return;} row.ergebnis=v; }
+    else { const {error}=await SB.from('tests').update({ergebnis:v}).eq('id',row.id); if(error){toast(error.message,'err');return false;} row.ergebnis=v; }
   } else if(v!=null){
     const {data,error}=await SB.from('tests').insert({fach,person_id:personId,monat,monat_sort:monatSort,
       datum:new Date().toISOString().slice(0,10),ergebnis:v}).select().single();
-    if(error){toast(error.message,'err');return;} cache.tests.push(data);
+    if(error){toast(error.message,'err');return false;} cache.tests.push(data);
   }
   renderBewertung(); toast('Gespeichert');
 }
@@ -327,46 +434,40 @@ function renderGrades(fach, sel){
   if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
   const head=`<tr><th class="name">Schüler</th><th>HA-Überpr.</th><th>Hausaufgaben</th>
     <th>Klausur 1</th><th>Klausur 2</th><th class="sum">Gesamt</th><th>Note</th></tr>`;
-  const numCell=(g,f)=>{
-    const v=g?g[f]:null;
-    return edit
-      ? `<td><input class="cell-input" type="number" min="0" max="100" value="${v==null?'':Math.round(v)}"
-           onchange="saveGrade('${g?.person_id}','${fach}','${f}',this.value)"></td>`
-      : `<td${f==='gesamt'?' class="sum"':''}>${v==null?'–':Math.round(v)+'%'}</td>`;
-  };
+  const c=v=>v==null?'–':Math.round(v)+'%';
   const body=list.map(p=>{
-    let g=rows.find(x=>x.person_id===p.id);
-    if(!g){ if(!edit) return ''; g={person_id:p.id,fach}; }
-    const noteCell=edit
-      ? `<td><input class="cell-input" value="${esc(g.gesamtnote||'')}"
-           onchange="saveGrade('${p.id}','${fach}','gesamtnote',this.value)"></td>`
-      : `<td>${esc(g.gesamtnote||'')}</td>`;
-    return `<tr><td class="name">${esc(fullName(p))}</td>
-      ${numCell({...g,person_id:p.id},'ha_ueberpruefung')}${numCell({...g,person_id:p.id},'hausaufgaben')}
-      ${numCell({...g,person_id:p.id},'klausur1')}${numCell({...g,person_id:p.id},'klausur2')}
-      ${numCell({...g,person_id:p.id},'gesamt')}${noteCell}</tr>`;
+    const g=rows.find(x=>x.person_id===p.id);
+    if(!g && !edit) return '';
+    const gg=g||{};
+    return `<tr class="${edit?'cell-edit':''}" ${edit?`onclick="editGrade('${p.id}','${fach}')"`:''}>
+      <td class="name">${esc(fullName(p))}</td>
+      <td>${c(gg.ha_ueberpruefung)}</td><td>${c(gg.hausaufgaben)}</td>
+      <td>${c(gg.klausur1)}</td><td>${c(gg.klausur2)}</td>
+      <td class="sum">${c(gg.gesamt)}</td><td>${esc(gg.gesamtnote||'')}</td></tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
 }
-async function saveGrade(personId, fach, field, value){
-  const val = field==='gesamtnote' ? (value||null) : parseNum(value);
-  const {data,error}=await SB.from('grades')
-    .upsert({fach,person_id:personId,[field]:val},{onConflict:'fach,person_id'}).select().single();
-  if(error){ toast(error.message,'err'); return; }
-  const i=cache.grades.findIndex(x=>x.fach===fach&&x.person_id===personId);
-  if(i>=0) cache.grades[i]=data; else cache.grades.push(data);
-  renderBewertung(); toast('Gespeichert');
+function editGrade(personId, fach){
+  const g=cache.grades.find(x=>x.fach===fach&&x.person_id===personId)||{};
+  const f=(id,lbl,val)=>`<label>${lbl}<input type="number" id="${id}" min="0" max="100" value="${val==null?'':Math.round(val)}"></label>`;
+  const body=f('dg_ha','HA-Überprüfung (%)',g.ha_ueberpruefung)+f('dg_hu','Hausaufgaben (%)',g.hausaufgaben)
+    +f('dg_k1','Klausur 1 (%)',g.klausur1)+f('dg_k2','Klausur 2 (%)',g.klausur2)+f('dg_ges','Gesamt (%)',g.gesamt)
+    +`<label>Note<input id="dg_note" value="${esc(g.gesamtnote||'')}"></label>`;
+  openDialog(`${fullName(personById(personId))} – Gesamtbewertung`, body, async()=>{
+    const payload={fach,person_id:personId,
+      ha_ueberpruefung:parseNum($('#dg_ha').value), hausaufgaben:parseNum($('#dg_hu').value),
+      klausur1:parseNum($('#dg_k1').value), klausur2:parseNum($('#dg_k2').value),
+      gesamt:parseNum($('#dg_ges').value), gesamtnote:$('#dg_note').value||null};
+    const {data,error}=await SB.from('grades').upsert(payload,{onConflict:'fach,person_id'}).select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    const i=cache.grades.findIndex(x=>x.fach===fach&&x.person_id===personId);
+    if(i>=0) cache.grades[i]=data; else cache.grades.push(data);
+    renderBewertung(); toast('Gespeichert');
+  });
 }
 
 // ---------- ADMIN ----------
 function renderAdmin(){
-  // Infos-Liste
-  $('#annAdminList').innerHTML = cache.ann.map(a=>
-    `<div class="admin-row"><b>${esc(a.titel)}</b>
-      <span class="muted">${fmtDate(a.datum)}</span>
-      <button class="btn-ghost" style="margin-left:auto" onclick="delAnn('${a.id}')">Löschen</button></div>`).join('')
-    || '<p class="muted">Keine Infos.</p>';
-  // Benutzerverwaltung
   renderPersonAdmin();
 }
 function renderPersonAdmin(){
@@ -416,17 +517,46 @@ async function addPerson(){
   $('#npVorname').value=$('#npNachname').value=$('#npEmail').value='';
   await loadAll(); renderAdmin(); toast('Person angelegt');
 }
-async function addAnn(){
-  const titel=$('#annTitle').value.trim(); if(!titel) return;
-  const text=$('#annText').value.trim();
-  const { error } = await SB.from('announcements').insert({titel,text});
-  if(error){ toast(error.message,'err'); return; }
-  $('#annTitle').value=''; $('#annText').value='';
-  await loadAll(); renderAdmin(); toast('Info hinzugefügt');
+// ---------- INFOS (Rich-Text-Editor) ----------
+let _annEditId=null, _savedRange=null;
+function saveSel(){ const s=window.getSelection(); if(s.rangeCount && $('#annEditor').contains(s.anchorNode)) _savedRange=s.getRangeAt(0); }
+function restoreSel(){ const ed=$('#annEditor'); ed.focus(); if(_savedRange){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(_savedRange); } }
+function rteCmd(cmd,val){ restoreSel(); document.execCommand(cmd,false,val||null); saveSel(); }
+function openAnnEditor(id){
+  _annEditId=id||null; _savedRange=null;
+  const a=id?cache.ann.find(x=>x.id===id):null;
+  $('#annModalTitle').textContent = id?'Info bearbeiten':'Neue Info';
+  $('#annT').value = a?(a.titel||''):'';
+  $('#annEditor').innerHTML = a?(a.text||''):'';
+  $('#annErr').textContent='';
+  $('#annModal').hidden=false;
+}
+function closeAnnEditor(){ $('#annModal').hidden=true; _annEditId=null; }
+async function saveAnn(){
+  const titel=$('#annT').value.trim();
+  if(!titel){ $('#annErr').textContent='Titel fehlt'; return; }
+  const text=$('#annEditor').innerHTML;
+  const res = _annEditId
+    ? await SB.from('announcements').update({titel,text}).eq('id',_annEditId)
+    : await SB.from('announcements').insert({titel,text});
+  if(res.error){ $('#annErr').textContent=res.error.message; return; }
+  closeAnnEditor(); await loadAll(); renderStart(); toast('Gespeichert');
 }
 async function delAnn(id){
+  if(!confirm('Diese Info löschen?')) return;
   await SB.from('announcements').delete().eq('id',id);
-  await loadAll(); renderAdmin();
+  await loadAll(); renderStart();
+}
+let _rteFileMode='img';
+function rteInsertFileTrigger(mode){ _rteFileMode=mode; saveSel();
+  $('#rteFile').accept = mode==='img'?'image/*':'application/pdf'; $('#rteFile').value=''; $('#rteFile').click(); }
+async function rteFilePicked(file){
+  if(!file) return;
+  const url=await uploadFile(file, _rteFileMode==='img'?'info-bilder':'info-pdfs'); if(!url) return;
+  restoreSel();
+  if(_rteFileMode==='img') document.execCommand('insertHTML',false,`<img src="${url}" alt="">`);
+  else document.execCommand('insertHTML',false,`<a href="${url}" target="_blank">📄 ${esc(file.name)}</a>&nbsp;`);
+  saveSel();
 }
 
 // ---------- TREFFEN anlegen ----------
@@ -531,8 +661,30 @@ function bind(){
   $('#meetingCancel').onclick=()=>{ $('#meetingModal').hidden=true; };
   $('#meetingSave').onclick=saveMeeting;
   $('#importBtn').onclick=runImport;
-  $('#annAddBtn').onclick=addAnn;
   $('#npAddBtn').onclick=addPerson;
+  $('#ptAddBtn').onclick=createPractice;
+
+  // Generischer Dialog
+  $('#dlgCancel').onclick=closeDialog;
+  $('#dlgSave').onclick=async()=>{ if(_dlgSave){ const r=await _dlgSave(); if(r!==false) closeDialog(); } else closeDialog(); };
+
+  // Info-Rich-Editor
+  $('#annNewBtn').onclick=()=>openAnnEditor();
+  $('#annCancel').onclick=closeAnnEditor;
+  $('#annSave').onclick=saveAnn;
+  const ed=$('#annEditor');
+  ['keyup','mouseup','focus'].forEach(ev=>ed.addEventListener(ev,saveSel));
+  $$('.rte-toolbar [data-cmd]').forEach(b=>{
+    b.addEventListener('mousedown',e=>e.preventDefault());
+    b.onclick=()=>rteCmd(b.dataset.cmd);
+  });
+  $('#rteFont').onchange=function(){ if(this.value) rteCmd('fontName',this.value); this.value=''; };
+  $('#rteSize').onchange=function(){ if(this.value) rteCmd('fontSize',this.value); this.value=''; };
+  $('#rteImg').addEventListener('mousedown',e=>e.preventDefault());
+  $('#rtePdf').addEventListener('mousedown',e=>e.preventDefault());
+  $('#rteImg').onclick=()=>rteInsertFileTrigger('img');
+  $('#rtePdf').onclick=()=>rteInsertFileTrigger('pdf');
+  $('#rteFile').onchange=function(){ rteFilePicked(this.files[0]); };
 }
 
 // ---------- Start ----------

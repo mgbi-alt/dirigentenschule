@@ -19,6 +19,7 @@
   <nav id="mainNav">
     <button class="nav-btn active" data-page="start">Start</button>
     <button class="nav-btn" data-page="ha">Hausaufgaben</button>
+    <button class="nav-btn" data-page="info">Info</button>
     <button class="nav-btn" data-page="kontakte">Kontakte</button>
     <button class="nav-btn" data-page="bewertung">Bewertungen</button>
     <button class="nav-btn admin-only" data-page="admin" hidden>Admin</button>
@@ -39,8 +40,18 @@
       <p class="hero-sub">Hausaufgaben, Übezeiten, Tests und Bewertungen – alles an einem Ort.</p>
     </div>
     <div class="cards" id="startCards"></div>
-    <h2 class="section-h">Aktuelle Infos</h2>
+    <div class="toolbar">
+      <h2 class="section-h">Aktuelle Infos</h2>
+      <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
+    </div>
     <div id="announcementsList" class="ann-list"></div>
+  </section>
+
+  <!-- ========== INFO (Pläne) ========== -->
+  <section class="page" id="page-info">
+    <h2 class="section-h">Stundenpläne & Termine</h2>
+    <p class="muted">Pläne als PDF ansehen und herunterladen.</p>
+    <div id="infoDocs"></div>
   </section>
 
   <!-- ========== HAUSAUFGABEN ========== -->
@@ -70,6 +81,7 @@
           <label>Jahr <select id="ptYear"></select></label>
           <label>KW <select id="ptWeek"></select></label>
           <label>Schüler <select id="ptStudent"></select></label>
+          <button class="btn-primary" id="ptAddBtn" hidden>+ Eintrag</button>
         </div>
       </div>
       <p class="muted">Ziel: 15 Min/Woche je Fach. <span class="legend red">0–5</span>
@@ -114,7 +126,6 @@
     <h2 class="section-h">Admin</h2>
     <div class="subnav">
       <button class="sub-btn active" data-sub="import">CSV-Import</button>
-      <button class="sub-btn" data-sub="infos">Infos</button>
       <button class="sub-btn" data-sub="personen">Personen</button>
     </div>
 
@@ -132,16 +143,6 @@
         <button class="btn-primary" id="importBtn">Importieren</button>
       </div>
       <pre id="importLog" class="log"></pre>
-    </div>
-
-    <div class="subpage" id="sub-infos">
-      <h3 class="section-h sm">Startseiten-Infos</h3>
-      <div class="import-row">
-        <input type="text" id="annTitle" placeholder="Titel">
-        <button class="btn-primary" id="annAddBtn">Hinzufügen</button>
-      </div>
-      <textarea id="annText" placeholder="Text der Information …" rows="3" class="ta"></textarea>
-      <div id="annAdminList"></div>
     </div>
 
     <div class="subpage" id="sub-personen">
@@ -189,6 +190,57 @@
     <div class="modal-actions">
       <button class="btn-ghost" id="meetingCancel">Abbrechen</button>
       <button class="btn-primary" id="meetingSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== GENERISCHER DIALOG ========== -->
+<div class="modal" id="dlg" hidden>
+  <div class="modal-box">
+    <h3 id="dlgTitle">Bearbeiten</h3>
+    <div id="dlgBody"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="dlgCancel">Abbrechen</button>
+      <button class="btn-primary" id="dlgSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== INFO / RICH-TEXT-EDITOR ========== -->
+<div class="modal" id="annModal" hidden>
+  <div class="modal-box wide">
+    <h3 id="annModalTitle">Info</h3>
+    <input type="text" id="annT" placeholder="Titel">
+    <div class="rte-toolbar">
+      <select id="rteFont" title="Schriftart">
+        <option value="">Schrift</option>
+        <option value="Arial">Arial</option>
+        <option value="Georgia">Georgia</option>
+        <option value="'Times New Roman'">Times</option>
+        <option value="'Courier New'">Courier</option>
+        <option value="Verdana">Verdana</option>
+      </select>
+      <select id="rteSize" title="Größe">
+        <option value="">Größe</option>
+        <option value="2">Klein</option>
+        <option value="3">Normal</option>
+        <option value="5">Groß</option>
+        <option value="6">Sehr groß</option>
+      </select>
+      <button type="button" data-cmd="bold" title="Fett"><b>F</b></button>
+      <button type="button" data-cmd="italic" title="Kursiv"><i>K</i></button>
+      <button type="button" data-cmd="underline" title="Unterstrichen"><u>U</u></button>
+      <button type="button" data-cmd="insertUnorderedList" title="Liste">• Liste</button>
+      <button type="button" data-cmd="insertOrderedList" title="Nummerierte Liste">1. Liste</button>
+      <button type="button" id="rteImg" title="Bild einfügen">🖼 Bild</button>
+      <button type="button" id="rtePdf" title="PDF einfügen">📄 PDF</button>
+    </div>
+    <div id="annEditor" class="rte" contenteditable="true"></div>
+    <input type="file" id="rteFile" accept="image/*,application/pdf" hidden>
+    <p class="modal-err" id="annErr"></p>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="annCancel">Abbrechen</button>
+      <button class="btn-primary" id="annSave">Speichern</button>
     </div>
   </div>
 </div>

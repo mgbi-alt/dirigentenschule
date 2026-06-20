@@ -158,6 +158,39 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .perm-row label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
 .perm-row input,.pi-active input{accent-color:var(--accent)}
 
+/* ---- Generischer Dialog ---- */
+#dlgBody{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+#dlgBody label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2)}
+#dlgBody input,#dlgBody select{width:100%}
+#dlgBody label.chk{flex-direction:row;align-items:center;gap:8px}
+#dlgBody label.chk input{width:auto}
+#dlgBody .muted{margin:0}
+
+/* ---- Rich-Text-Editor ---- */
+.rte-toolbar{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0;padding:6px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r)}
+.rte-toolbar button{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:4px 9px;cursor:pointer;font-size:13px}
+.rte-toolbar button:hover{border-color:var(--accent)}
+.rte-toolbar select{padding:4px 6px;font-size:13px}
+.rte{min-height:180px;max-height:340px;overflow:auto;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r);padding:12px;color:var(--text);font-size:14px;line-height:1.5}
+.rte:focus{outline:1px solid var(--accent)}
+.rte img{max-width:100%;border-radius:6px}
+
+/* ---- Info-Pläne ---- */
+.doc-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:16px;margin-bottom:16px}
+.doc-card .doc-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.doc-card h3{margin:0;font-size:17px}
+.doc-card iframe{width:100%;height:560px;border:1px solid var(--border);border-radius:var(--r);background:#fff}
+.doc-empty{color:var(--text3);font-size:14px;padding:20px;text-align:center;border:1px dashed var(--border);border-radius:var(--r)}
+
+/* ---- Ankündigungen: Rich-Inhalt + Aktionen ---- */
+.ann-item .ann-body img{max-width:100%;border-radius:6px}
+.ann-item .ann-actions{display:flex;gap:6px;margin-top:8px}
+.ann-item .ann-actions button{font-size:12px;padding:4px 10px}
+.contact-card .edit-btn{margin-top:8px;font-size:12px;padding:4px 10px}
+.cell-edit{cursor:pointer}
+.cell-edit:hover{outline:1px solid var(--accent)}
+
 /* ---- Toast ---- */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
   background:var(--bg2);border:1px solid var(--accent);color:var(--text);
