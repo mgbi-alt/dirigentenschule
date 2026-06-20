@@ -422,7 +422,22 @@ function myToken(){
   const v=(currentPerson.vorname||'').trim(), n=(currentPerson.nachname||'').trim();
   return (v&&n)?`${v} ${n[0]}.`:null;
 }
+function personToken(p){ const v=(p.vorname||'').trim(), n=(p.nachname||'').trim(); return (v&&n)?`${v} ${n[0]}.`:(v||n||''); }
+function teacherPeople(){
+  return cache.people.filter(p=>p.aktiv && (hasRole(p,'lehrer')||hasRole(p,'klassenleitung')||hasRole(p,'admin')))
+    .sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
+}
+function lehrerDisplay(r){
+  const ids=(r.lehrer_ids||[]).map(id=>personById(id)).filter(Boolean).map(personToken);
+  if(ids.length) return ids.join(', ');
+  return r.lehrer||'';
+}
+function teacherSelectHtml(selected){
+  const sel=new Set(selected||[]);
+  return teacherPeople().map(p=>`<option value="${p.id}" ${sel.has(p.id)?'selected':''}>${esc(fullName(p))}</option>`).join('');
+}
 function lessonIsMine(r, token){
+  if(currentPerson && (r.lehrer_ids||[]).includes(currentPerson.id)) return true;
   if(!token) return false; const t=token.toLowerCase();
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
@@ -439,15 +454,18 @@ function renderStundenplan(){
   const sAsLine=['Musiktheorie','Gehörbildung'];   // hier Schüler als "S:"-Zeile
   const cellHtml=r=>{
     const lines=[];
+    if(r.ueberschrift) lines.push(`<div class="tt-head">${esc(r.ueberschrift)}</div>`);
     if(r.schueler){
       lines.push(sAsLine.includes(r.fach)
         ? `<div class="tt-meta">S: ${esc(r.schueler)}</div>`
         : `<div class="tt-stu">${esc(r.schueler)}</div>`);
     }
-    if(r.lehrer)  lines.push(`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`);
+    const leh=lehrerDisplay(r);
+    if(leh)       lines.push(`<div class="tt-meta">L: ${esc(leh)}</div>`);
     if(r.klavier) lines.push(`<div class="tt-meta">K: ${esc(r.klavier)}</div>`);
     if(r.raum)    lines.push(`<div class="tt-room">R: ${esc(r.raum)}</div>`);
-    while(lines.length<4) lines.push('<div class="tt-meta">&nbsp;</div>');  // gleiche Höhe
+    const pad = r.ueberschrift?5:4;
+    while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');  // gleiche Höhe
     return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${lines.join('')}</div>`;
   };
   const subjectsHtml=slotRows=>{
@@ -464,8 +482,11 @@ function renderStundenplan(){
   }
   let html=slots.map(zeit=>{
     let slotRows=rows.filter(r=>r.zeit===zeit);
-    if(slotRows.length && slotRows.every(r=>r.fach==='Pause'))
-      return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-pause">Pause</div></div>`;
+    if(slotRows.length && slotRows.every(r=>r.fach==='Pause')){
+      const pr=slotRows[0];
+      return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div>
+        <div class="tt-pause ${edit?'editable':''}" ${edit?`onclick="editLesson('${pr.id}')"`:''}>Pause</div></div>`;
+    }
     if(token){
       const mine=slotRows.filter(r=>lessonIsMine(r,token));
       if(!mine.length) return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
@@ -487,7 +508,8 @@ async function copyPlan(){
       .select().single();
     if(error){ toast(error.message,'err'); return false; }
     const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
-      zeit_sort:r.zeit_sort, fach:r.fach, schueler:r.schueler, lehrer:r.lehrer, klavier:r.klavier, raum:r.raum, sort:r.sort}));
+      zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler,
+      lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, raum:r.raum, sort:r.sort}));
     if(copies.length){
       const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
       if(e2){ toast(e2.message,'err'); return false; } cache.tt.push(...(ins||[]));
@@ -500,14 +522,21 @@ function lessonForm(r){
   const fachOpts=FACH_ORDER.concat(['Pause']).map(f=>`<option ${r.fach===f?'selected':''}>${f}</option>`).join('');
   return `<label>Zeit<input id="tl_zeit" value="${esc(r.zeit||'')}" placeholder="z.B. 10:00 - 10:45"></label>
     <label>Fach<select id="tl_fach">${fachOpts}</select></label>
-    <label>Schüler / Gruppe<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
-    <label>Lehrer<input id="tl_leh" value="${esc(r.lehrer||'')}"></label>
+    <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
+    <label>Schüler<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
+    <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
+      <select id="tl_lehids" multiple size="5">${teacherSelectHtml(r.lehrer_ids)}</select></label>
+    <label>Lehrer-Kürzel/Freitext (optional)<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
     <label>Klavierbegleitung<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
     <label>Raum<input id="tl_raum" value="${esc(r.raum||'')}"></label>`;
 }
 function readLessonForm(){
+  const ids=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
   return { zeit:$('#tl_zeit').value.trim(), fach:$('#tl_fach').value,
-    schueler:$('#tl_stu').value.trim()||null, lehrer:$('#tl_leh').value.trim()||null,
+    ueberschrift:$('#tl_head').value.trim()||null,
+    schueler:$('#tl_stu').value.trim()||null,
+    lehrer_ids: ids.length?ids:null,
+    lehrer:$('#tl_leh').value.trim()||null,
     klavier:$('#tl_kla').value.trim()||null, raum:$('#tl_raum').value.trim()||null };
 }
 function slotSortFor(zeit){ const r=cache.tt.find(x=>x.zeit===zeit); return r?r.zeit_sort:(Math.max(0,...cache.tt.map(x=>x.zeit_sort||0))+1); }
@@ -632,65 +661,77 @@ function renderAdmin(){
   renderPersonAdmin();
 }
 function renderPersonAdmin(){
-  $('#personAdminList').innerHTML = cache.people
-    .slice().sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')).map(p=>{
-    const roleChecks = ROLES.map(role=>
-      `<label><input type="checkbox" ${hasRole(p,role.key)?'checked':''}
-        onchange="toggleRole('${p.id}','${role.key}',this.checked)"> ${role.label}</label>`).join('');
-    const showPerms = hasRole(p,'lehrer') || hasRole(p,'klassenleitung');
-    const perms = showPerms
-      ? `<div class="perm-row"><span class="muted">Rechte:</span>${EDIT_AREAS.map(a=>
-          `<label><input type="checkbox" ${p.permissions?.[a.key]?'checked':''}
-            onchange="savePermission('${p.id}','${a.key}',this.checked)"> ${a.label}</label>`).join('')}</div>`
-      : '';
+  const q=($('#paSearch')?.value||'').toLowerCase();
+  const roleLabel=Object.fromEntries(ROLES.map(r=>[r.key,r.label]));
+  const list=cache.people
+    .filter(p=>fullName(p).toLowerCase().includes(q) || (p.email||'').toLowerCase().includes(q))
+    .sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
+  $('#personAdminList').innerHTML = list.map(p=>{
+    const pills=personRoles(p).map(r=>`<span class="role-pill">${roleLabel[r]||r}</span>`).join(' ');
     return `<div class="person-item ${p.aktiv?'':'inactive'}">
-      <div class="pi-head">
-        <span class="pi-name">${esc(fullName(p))}</span>
-        <input class="pi-email" type="email" value="${esc(p.email||'')}" placeholder="E-Mail"
-          onchange="savePerson('${p.id}','email',this.value)">
-        <label class="pi-active"><input type="checkbox" ${p.aktiv?'checked':''}
-          onchange="savePerson('${p.id}','aktiv',this.checked)"> aktiv</label>
-      </div>
-      <div class="role-row"><span class="muted">Rollen:</span>${roleChecks}</div>
-      ${perms}</div>`;
-  }).join('');
+      <span class="pi-name">${esc(fullName(p))}</span>
+      <span class="muted pi-email">${esc(p.email||'—')}</span>
+      <span class="pi-roles">${pills}${p.aktiv?'':' <span class="role-pill">inaktiv</span>'}</span>
+      <button class="btn-ghost" style="margin-left:auto" onclick="editPerson('${p.id}')">Bearbeiten</button>
+    </div>`;
+  }).join('') || '<p class="muted">Keine Treffer.</p>';
 }
-async function toggleRole(id, role, val){
+function personFormBody(p, withContact){
+  p=p||{};
+  const roleChecks=ROLES.map(r=>`<label class="chk"><input type="checkbox" id="pe_role_${r.key}" ${hasRole(p,r.key)?'checked':''}> ${r.label}</label>`).join('');
+  const contact = withContact ? `<label>Gemeinde<input id="pe_gem" value="${esc(p.gemeinde||'')}"></label>
+    <label>Telefon<input id="pe_tel" value="${esc(p.telefon||'')}"></label>` : '';
+  const perms = withContact ? `<div class="dlg-group"><b>Bearbeitungsrechte (Lehrer/Klassenleitung)</b>
+    ${EDIT_AREAS.map(a=>`<label class="chk"><input type="checkbox" id="pe_perm_${a.key}" ${p.permissions?.[a.key]?'checked':''}> ${a.label}</label>`).join('')}</div>` : '';
+  return `<label>Vorname<input id="pe_vor" value="${esc(p.vorname||'')}"></label>
+    <label>Nachname<input id="pe_nach" value="${esc(p.nachname||'')}"></label>
+    <label>E-Mail<input id="pe_mail" type="email" value="${esc(p.email||'')}"></label>
+    ${contact}
+    <div class="dlg-group"><b>Rollen</b>${roleChecks}</div>
+    ${perms}
+    ${withContact?`<label class="chk"><input type="checkbox" id="pe_aktiv" ${p.aktiv?'checked':''}> aktiv</label>`:''}`;
+}
+function readPersonForm(withContact){
+  const roles=ROLES.filter(r=>$('#pe_role_'+r.key).checked).map(r=>r.key);
+  const upd={ vorname:$('#pe_vor').value.trim()||null, nachname:$('#pe_nach').value.trim(),
+    email:$('#pe_mail').value.trim()||null, roles, rolle:roles[0]||null };
+  if(withContact){
+    upd.gemeinde=$('#pe_gem').value.trim()||null; upd.telefon=$('#pe_tel').value.trim()||null;
+    upd.aktiv=$('#pe_aktiv').checked;
+    const permissions={}; EDIT_AREAS.forEach(a=>{ if($('#pe_perm_'+a.key).checked) permissions[a.key]=true; });
+    upd.permissions=permissions;
+  }
+  return upd;
+}
+function editPerson(id){
   const p=cache.people.find(x=>x.id===id); if(!p) return;
-  let roles=[...personRoles(p)];
-  if(val){ if(!roles.includes(role)) roles.push(role); } else roles=roles.filter(r=>r!==role);
-  const {error}=await SB.from('people').update({roles, rolle:roles[0]||null}).eq('id',id);
-  if(error){ toast(error.message,'err'); return; }
-  p.roles=roles; p.rolle=roles[0]||null;
-  if(id===currentPerson?.id) afterSession();
-  renderPersonAdmin(); toast('Gespeichert');
+  const body=personFormBody(p,true)+`<button class="btn-ghost" style="margin-top:6px;color:#e88" onclick="deletePerson('${id}')">Benutzer löschen</button>`;
+  openDialog(`${fullName(p)||'Person'} bearbeiten`, body, async()=>{
+    const upd=readPersonForm(true);
+    if(!upd.nachname){ toast('Nachname fehlt','err'); return false; }
+    const {error}=await SB.from('people').update(upd).eq('id',id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(p,upd);
+    if(id===currentPerson?.id) afterSession();
+    renderPersonAdmin(); toast('Gespeichert');
+  });
 }
-async function savePerson(id, field, value){
-  const {error}=await SB.from('people').update({[field]:value}).eq('id',id);
+async function deletePerson(id){
+  if(!confirm('Diesen Benutzer wirklich löschen?')) return;
+  const {error}=await SB.from('people').delete().eq('id',id);
   if(error){ toast(error.message,'err'); return; }
-  const p=cache.people.find(x=>x.id===id); if(p) p[field]=value;
-  if(field==='rolle') renderPersonAdmin();          // Rechte-Block ein-/ausblenden
-  if(id===currentPerson?.id) afterSession();          // eigene Rechte sofort anwenden
-  toast('Gespeichert');
+  cache.people=cache.people.filter(x=>x.id!==id); closeDialog(); renderPersonAdmin(); toast('Gelöscht');
 }
-async function savePermission(id, area, value){
-  const p=cache.people.find(x=>x.id===id); if(!p) return;
-  const perms={...(p.permissions||{}), [area]:value};
-  const {error}=await SB.from('people').update({permissions:perms}).eq('id',id);
-  if(error){ toast(error.message,'err'); return; }
-  p.permissions=perms;
-  if(id===currentPerson?.id) currentPerson.permissions=perms;
-  toast('Gespeichert');
-}
-async function addPerson(){
-  const vorname=$('#npVorname').value.trim(), nachname=$('#npNachname').value.trim();
-  const email=$('#npEmail').value.trim(), rolle=$('#npRolle').value;
-  if(!nachname){ toast('Nachname fehlt','err'); return; }
-  const {error}=await SB.from('people').insert({vorname,nachname,email:email||null,rolle,roles:[rolle],
-    sort:(Math.max(0,...cache.people.map(p=>p.sort||0))+10)});
-  if(error){ toast(error.message,'err'); return; }
-  $('#npVorname').value=$('#npNachname').value=$('#npEmail').value='';
-  await loadAll(); renderAdmin(); toast('Person angelegt');
+function addPersonDialog(){
+  openDialog('Neue Person anlegen', personFormBody({roles:['schueler']},false), async()=>{
+    const upd=readPersonForm(false);
+    if(!upd.nachname){ toast('Nachname fehlt','err'); return false; }
+    if(!upd.roles.length) upd.roles=['schueler'];
+    upd.rolle=upd.roles[0]; upd.aktiv=true; upd.sort=(Math.max(0,...cache.people.map(p=>p.sort||0))+10);
+    const {data,error}=await SB.from('people').insert(upd).select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    cache.people.push(data); renderPersonAdmin(); toast('Person angelegt');
+  });
 }
 // ---------- INFOS (Rich-Text-Editor) ----------
 let _annEditId=null, _savedRange=null;
@@ -747,76 +788,6 @@ async function saveMeeting(){
   await loadAll(); renderTheory(); toast('Treffen gespeichert');
 }
 
-// ---------- CSV-IMPORT ----------
-function parseCSV(text){
-  const rows=[]; let row=[], field='', q=false;
-  for(let i=0;i<text.length;i++){ const c=text[i];
-    if(q){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else q=false; } else field+=c; }
-    else { if(c==='"') q=true; else if(c===','){ row.push(field); field=''; }
-      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
-      else if(c!=='\r') field+=c; }
-  }
-  if(field.length||row.length){ row.push(field); rows.push(row); }
-  const head=rows.shift().map(h=>h.trim());
-  return rows.filter(r=>r.length>1).map(r=>Object.fromEntries(head.map((h,i)=>[h,r[i]])));
-}
-async function runImport(){
-  const file=$('#importFile').files[0]; if(!file){ toast('Keine Datei','err'); return; }
-  const type=$('#importType').value;
-  const log=m=>{ $('#importLog').textContent+=m+'\n'; };
-  $('#importLog').textContent='';
-  const text=await file.text();
-  const rows=parseCSV(text);
-  log(`${rows.length} Zeilen gelesen.`);
-  const pMap=new Map(cache.people.filter(p=>p.legacy_id!=null).map(p=>[String(p.legacy_id),p.id]));
-  let ok=0, skip=0;
-  try{
-    if(type==='zeiten'){
-      const ups=[];
-      for(const r of rows){
-        const pid=pMap.get(r.user_raw); if(!pid){ skip++; continue; }
-        const mw=(r.woche||'').match(/(\d{4}).*?KW\s*(\d+)/i); if(!mw){ skip++; continue; }
-        ups.push({person_id:pid, jahr:+mw[1], kw:+mw[2], datum:(r.date_time||'').slice(0,10)||null,
-          dirigieren:parseNum(r.dirigieren_raw)||0, stimmbildung:parseNum(r.stimmbildung_raw)||0,
-          klavier:parseNum(r.klavier_raw)||0, gehoerbildung:parseNum(r.gehoerbildung_raw)||0});
-      }
-      for(let i=0;i<ups.length;i+=200){
-        const { error }=await SB.from('practice_times').upsert(ups.slice(i,i+200),{onConflict:'person_id,jahr,kw'});
-        if(error) throw error; ok+=Math.min(200,ups.length-i);
-      }
-    }
-    else if(type==='hl_tests'||type==='gb_tests'){
-      const fach=type==='hl_tests'?'harmonielehre':'gehoerbildung';
-      const ins=[];
-      for(const r of rows){
-        const pid=pMap.get(r.user_raw); if(!pid){ skip++; continue; }
-        ins.push({fach, person_id:pid, monat:r.monat||null, monat_sort:parseNum(r.monat_raw),
-          datum:(r.date_time||'').slice(0,10)||null, ergebnis:parseNum(r.ergebnis_raw??r.ergebnis)});
-      }
-      // Saubere Neubefüllung dieses Fachs
-      await SB.from('tests').delete().eq('fach',fach);
-      for(let i=0;i<ins.length;i+=200){
-        const { error }=await SB.from('tests').insert(ins.slice(i,i+200)); if(error) throw error;
-        ok+=Math.min(200,ins.length-i);
-      }
-    }
-    else if(type==='hl_grades'){
-      const ups=[];
-      for(const r of rows){
-        const pid=pMap.get(r.user_raw); if(!pid){ skip++; continue; }
-        ups.push({fach:'harmonielehre', person_id:pid,
-          ha_ueberpruefung:parseNum(r.ha_ueberpruefung_raw), hausaufgaben:parseNum(r.hausaufgaben1_raw),
-          klausur1:parseNum(r.klausur1_raw), klausur2:parseNum(r.klausur2_raw),
-          gesamt:parseNum(r.gesamt_raw), gesamtnote:r.gesamtnote_raw||r.gesamtnote||null});
-      }
-      const { error }=await SB.from('grades').upsert(ups,{onConflict:'fach,person_id'}); if(error) throw error;
-      ok=ups.length;
-    }
-    log(`Fertig: ${ok} importiert, ${skip} übersprungen (keine Person-Zuordnung).`);
-    await loadAll(); toast('Import abgeschlossen');
-  }catch(e){ log('FEHLER: '+e.message); toast('Import-Fehler','err'); }
-}
-
 // ---------- Events ----------
 function bind(){
   $$('.nav-btn').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
@@ -835,8 +806,8 @@ function bind(){
   $('#newMeetingBtn').onclick=()=>{ $('#meetingModal').hidden=false; };
   $('#meetingCancel').onclick=()=>{ $('#meetingModal').hidden=true; };
   $('#meetingSave').onclick=saveMeeting;
-  $('#importBtn').onclick=runImport;
-  $('#npAddBtn').onclick=addPerson;
+  $('#paSearch').oninput=renderPersonAdmin;
+  $('#paAddBtn').onclick=addPersonDialog;
   $('#ptAddBtn').onclick=createPractice;
   $('#ttAddBtn').onclick=addLesson;
   $('#ttNewPlanBtn').onclick=copyPlan;

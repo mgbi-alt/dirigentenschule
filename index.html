@@ -153,45 +153,15 @@
 
   <!-- ========== ADMIN ========== -->
   <section class="page" id="page-admin">
-    <h2 class="section-h">Admin</h2>
-    <div class="subnav">
-      <button class="sub-btn active" data-sub="import">CSV-Import</button>
-      <button class="sub-btn" data-sub="personen">Personen</button>
-    </div>
-
-    <div class="subpage active" id="sub-import">
-      <h3 class="section-h sm">CSV-Import (Fabrik-Exporte)</h3>
-      <p class="muted">CSV-Datei auswählen, Typ wählen, importieren. Bestehende Einträge werden aktualisiert.</p>
-      <div class="import-row">
-        <select id="importType">
-          <option value="zeiten">Hausaufgabenzeiten (hk_hausaufgaben_gesamt)</option>
-          <option value="hl_tests">Harmonielehre-Tests (hk_harmonielehre_tests)</option>
-          <option value="gb_tests">Gehörbildung-Tests (hk_gehoerbildung_tests)</option>
-          <option value="hl_grades">Harmonielehre-Gesamt (hk_harmonielehre)</option>
-        </select>
-        <input type="file" id="importFile" accept=".csv">
-        <button class="btn-primary" id="importBtn">Importieren</button>
+    <div class="toolbar">
+      <h2 class="section-h">Benutzerverwaltung</h2>
+      <div class="filters">
+        <input type="search" id="paSearch" placeholder="Suchen …" class="search-input">
+        <button class="btn-primary" id="paAddBtn">+ Person anlegen</button>
       </div>
-      <pre id="importLog" class="log"></pre>
     </div>
-
-    <div class="subpage" id="sub-personen">
-      <h3 class="section-h sm">Benutzerverwaltung</h3>
-      <p class="muted">Rolle setzen, aktiv schalten und für Lehrer die Bearbeitungsrechte pro Tabelle festlegen.</p>
-      <div class="import-row">
-        <input type="text" id="npVorname" placeholder="Vorname">
-        <input type="text" id="npNachname" placeholder="Nachname">
-        <input type="email" id="npEmail" placeholder="E-Mail">
-        <select id="npRolle">
-          <option value="schueler">Schüler</option>
-          <option value="lehrer">Lehrer</option>
-          <option value="klassenleitung">Klassenleitung</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button class="btn-primary" id="npAddBtn">Person anlegen</button>
-      </div>
-      <div id="personAdminList" class="person-admin"></div>
-    </div>
+    <p class="muted">Liste lesend. Über „Bearbeiten" Rollen, Rechte, Kontaktdaten ändern, deaktivieren oder löschen.</p>
+    <div id="personAdminList" class="person-admin"></div>
   </section>
 
 </main>

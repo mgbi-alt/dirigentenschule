@@ -148,11 +148,14 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 
 /* Benutzerverwaltung */
 .person-admin{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.person-item{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px}
-.person-item.inactive{opacity:.5}
-.pi-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.person-item{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.person-item.inactive{opacity:.55}
 .pi-name{font-weight:600;min-width:160px}
-.pi-email{min-width:200px}
+.pi-email{min-width:180px}
+.pi-roles{display:flex;gap:4px;flex-wrap:wrap}
+#dlgBody .dlg-group{border-top:1px dashed var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px}
+#dlgBody .dlg-group b{font-size:12px;color:var(--text2)}
 .pi-active{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
 .perm-row,.role-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
 .perm-row label,.role-row label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
@@ -218,7 +221,10 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-cell.editable:hover{border-color:var(--accent)}
 .tt-free{background:var(--green-bg);border:1px solid var(--border);border-radius:var(--r);
   text-align:center;color:var(--text2);padding:10px;font-size:13px;flex:1}
+.tt-head{font-weight:700;color:var(--accent2);font-size:12px}
 .tt-stu{font-weight:600;color:var(--text)}
+.tt-pause.editable{cursor:pointer}
+.tt-pause.editable:hover{border-color:var(--accent)}
 .tt-cell .tt-meta{color:var(--text2)}
 .tt-cell .tt-room{color:var(--accent2)}
 .tt-add{font-size:12px;padding:3px 8px;margin-top:2px}
