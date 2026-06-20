@@ -69,7 +69,7 @@
   <section class="page" id="page-ha">
     <div class="subnav">
       <button class="sub-btn active" data-sub="theorie">Musiktheorie</button>
-      <button class="sub-btn" data-sub="zeiten">Übezeiten</button>
+      <button class="sub-btn" data-sub="zeiten">Praktische Fächer</button>
     </div>
 
     <!-- Musiktheorie -->
@@ -87,11 +87,12 @@
     <!-- Übezeiten -->
     <div class="subpage" id="sub-zeiten">
       <div class="toolbar">
-        <h2 class="section-h">Hausaufgabenzeiten pro Woche</h2>
+        <h2 class="section-h">Zeiten für die praktischen Fächer</h2>
         <div class="filters">
           <label>Jahr <select id="ptYear"></select></label>
           <label>KW <select id="ptWeek"></select></label>
           <label>Schüler <select id="ptStudent"></select></label>
+          <button class="btn-ghost" id="ptWeekGenBtn" hidden>Wocheneinträge erzeugen</button>
           <button class="btn-primary" id="ptAddBtn" hidden>+ Eintrag</button>
         </div>
       </div>
@@ -139,14 +140,16 @@
       <h2 class="section-h">Harmonielehre</h2>
       <h3 class="section-h sm">5-Minuten-Tests (%)</h3>
       <div class="table-wrap" id="hlTests"></div>
-      <h3 class="section-h sm">Gesamtbewertung</h3>
+      <div class="toolbar"><h3 class="section-h sm">Gesamtbewertung</h3>
+        <button class="btn-ghost grades-cols-btn" data-fach="harmonielehre" hidden>Spalten bearbeiten</button></div>
       <div class="table-wrap" id="hlGrades"></div>
     </div>
     <div class="subpage" id="sub-gehoerbildung">
       <h2 class="section-h">Gehörbildung</h2>
       <h3 class="section-h sm">5-Minuten-Tests (%)</h3>
       <div class="table-wrap" id="gbTests"></div>
-      <h3 class="section-h sm">Gesamtbewertung</h3>
+      <div class="toolbar"><h3 class="section-h sm">Gesamtbewertung</h3>
+        <button class="btn-ghost grades-cols-btn" data-fach="gehoerbildung" hidden>Spalten bearbeiten</button></div>
       <div class="table-wrap" id="gbGrades"></div>
     </div>
   </section>

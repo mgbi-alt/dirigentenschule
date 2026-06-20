@@ -30,7 +30,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -108,6 +108,7 @@ async function afterSession(){
   $('#newMeetingBtn').hidden = !canEdit('theorie');
   $('#annNewBtn').hidden = !canEdit('infos');
   $('#ptAddBtn').hidden = !currentPerson;
+  $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
   $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
   await loadAll();
@@ -131,7 +132,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -141,11 +142,12 @@ async function loadAll(){
     SB.from('grades').select('*'),
     SB.from('timetable').select('*'),
     SB.from('plans').select('*').order('sort'),
+    SB.from('grade_columns').select('*').order('sort'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
-  cache.tt=tt.data||[]; cache.plans=plans.data||[];
+  cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -257,9 +259,18 @@ function fillPracticeFilters(){
   fill($('#ptYear'),years,'Alle');
   fill($('#ptWeek'),weeks,'Alle');
   $('#ptStudent').innerHTML='<option value="">Alle</option>'+students().map(p=>`<option value="${p.id}">${esc(fullName(p))}</option>`).join('');
-  // Standard: neueste KW
+  // Standard: neuestes Jahr, KW = Alle
   if(!$('#ptYear').value && years[0]) $('#ptYear').value=years[0];
-  if(!$('#ptWeek').value && weeks[0]) $('#ptWeek').value=weeks[0];
+}
+// Datumsbereich (Mo–So) einer ISO-Kalenderwoche, z.B. "15.6.-21.6."
+function kwRange(jahr, kw){
+  const simple=new Date(Date.UTC(jahr,0,1+(kw-1)*7));
+  const dow=simple.getUTCDay();
+  const monday=new Date(simple);
+  if(dow<=4) monday.setUTCDate(simple.getUTCDate()-dow+1); else monday.setUTCDate(simple.getUTCDate()+8-dow);
+  const sunday=new Date(monday); sunday.setUTCDate(monday.getUTCDate()+6);
+  const f=d=>`${d.getUTCDate()}.${d.getUTCMonth()+1}.`;
+  return `${f(monday)}-${f(sunday)}`;
 }
 function renderPractice(){
   if(!$('#ptYear').options.length) fillPracticeFilters();
@@ -281,7 +292,7 @@ function renderPractice(){
       return `<td class="${practiceCellClass(v)}">${v} <span class="muted">Min</span></td>`;
     }).join('');
     return `<tr class="${canEditRow?'cell-edit':''}" ${canEditRow?`onclick="editPractice('${r.id}')"`:''}>
-      <td>${r.jahr}</td><td>${r.kw}</td><td>${fmtDate(r.datum)}</td>
+      <td>${r.jahr}</td><td>${r.kw}</td><td>${kwRange(r.jahr,r.kw)}</td>
       <td class="name">${esc(fullName(p))}</td>${cells}
       <td class="sum ${gesamtClass(sum)}">${sum} Min</td>
       <td>${r.ferien?'✓':'–'}</td></tr>`;
@@ -298,15 +309,24 @@ function isoWeek(d){
 function minOpts(v){ return MIN_OPTIONS.map(n=>`<option ${n==v?'selected':''}>${n}</option>`).join(''); }
 function editPractice(id){
   const r=cache.practice.find(x=>x.id===id); if(!r) return;
-  const body=SUBJECTS.map(s=>`<label>${s.label} (Min)<select id="dp_${s.key}">${minOpts(+r[s.key]||0)}</select></label>`).join('')
-    +`<label class="chk"><input type="checkbox" id="dp_ferien" ${r.ferien?'checked':''}> Ferien</label>`;
+  const ferienHtml = isAdmin
+    ? `<label class="chk"><input type="checkbox" id="dp_ferien" ${r.ferien?'checked':''}> Ferien</label>`
+    : (r.ferien?`<p class="muted">Diese Woche ist als Ferien markiert (nur Admin änderbar).</p>`:'');
+  const body=SUBJECTS.map(s=>`<label>${s.label} (Min)<select id="dp_${s.key}">${minOpts(+r[s.key]||0)}</select></label>`).join('')+ferienHtml;
   openDialog(`${fullName(personById(r.person_id))} – KW ${r.kw}/${r.jahr}`, body, async()=>{
-    const upd={ferien:$('#dp_ferien').checked, updated_at:new Date().toISOString()};
+    const upd={updated_at:new Date().toISOString()};
+    if(isAdmin) upd.ferien=$('#dp_ferien').checked;
     SUBJECTS.forEach(s=>upd[s.key]=parseInt($('#dp_'+s.key).value)||0);
     const {error}=await SB.from('practice_times').update(upd).eq('id',r.id);
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(r,upd); renderPractice(); toast('Gespeichert');
   });
+}
+async function genPracticeWeek(){
+  if(!isAdmin) return;
+  const { error } = await SB.rpc('ensure_practice_current');
+  if(error){ toast(error.message,'err'); return; }
+  await loadAll(); fillPracticeFilters(); renderPractice(); toast('Wocheneinträge für aktuelle KW erzeugt');
 }
 function createPractice(){
   if(!currentPerson){ toast('Bitte anmelden','err'); return; }
@@ -318,12 +338,12 @@ function createPractice(){
     <label>Jahr<input type="number" id="dp_jahr" value="${now.getFullYear()}"></label>
     <label>KW<input type="number" id="dp_kw" min="1" max="53" value="${isoWeek(now)}"></label>
     ${SUBJECTS.map(s=>`<label>${s.label} (Min)<select id="dp_${s.key}">${minOpts(0)}</select></label>`).join('')}
-    <label class="chk"><input type="checkbox" id="dp_ferien"> Ferien</label>`;
-  openDialog('Neuer Übezeit-Eintrag', body, async()=>{
+    ${isAdmin?`<label class="chk"><input type="checkbox" id="dp_ferien"> Ferien</label>`:''}`;
+  openDialog('Neuer Eintrag (praktische Fächer)', body, async()=>{
     const pid=lockSelf?me.id:$('#dp_person').value;
     const rec={person_id:pid, jahr:parseInt($('#dp_jahr').value)||now.getFullYear(),
       kw:parseInt($('#dp_kw').value)||isoWeek(now), datum:new Date().toISOString().slice(0,10),
-      ferien:$('#dp_ferien').checked};
+      ferien:isAdmin?$('#dp_ferien').checked:false};
     SUBJECTS.forEach(s=>rec[s.key]=parseInt($('#dp_'+s.key).value)||0);
     const {data,error}=await SB.from('practice_times').upsert(rec,{onConflict:'person_id,jahr,kw'}).select().single();
     if(error){ toast(error.message,'err'); return false; }
@@ -569,6 +589,7 @@ async function delLesson(id){
 
 // ---------- BEWERTUNGEN ----------
 function renderBewertung(){
+  $$('.grades-cols-btn').forEach(b=>b.hidden=!canEdit('bewertung'));
   const sub=$('#page-bewertung .sub-btn.active')?.dataset.sub||'harmonielehre';
   if(sub==='harmonielehre'){ renderTests('harmonielehre','#hlTests'); renderGrades('harmonielehre','#hlGrades'); }
   else { renderTests('gehoerbildung','#gbTests'); renderGrades('gehoerbildung','#gbGrades'); }
@@ -617,42 +638,79 @@ async function saveTest(personId, fach, monat, monatSort, value){
   }
   renderBewertung(); toast('Gespeichert');
 }
+function gradeColsFor(fach){ return cache.gradeCols.filter(c=>c.fach===fach).sort((a,b)=>(a.sort||0)-(b.sort||0)); }
+function gradeVal(g, col){ const v=g?.werte?.[col.id]; return (v==null||v==='')?null:v; }
 function renderGrades(fach, sel){
+  const cols=gradeColsFor(fach);
   const rows=cache.grades.filter(g=>g.fach===fach);
   const edit=canEdit('bewertung');
-  const list=visibleStudents();
+  if(!cols.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Spalten definiert.</p>'; return; }
   if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
-  const head=`<tr><th class="name">Schüler</th><th>HA-Überpr.</th><th>Hausaufgaben</th>
-    <th>Klausur 1</th><th>Klausur 2</th><th class="sum">Gesamt</th><th>Note</th></tr>`;
-  const c=v=>v==null?'–':Math.round(v)+'%';
-  const body=list.map(p=>{
+  const fmt=(col,v)=> v==null?'–':(col.art==='text'?esc(String(v)):Math.round(v)+'%');
+  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}</tr>`;
+  const body=visibleStudents().map(p=>{
     const g=rows.find(x=>x.person_id===p.id);
     if(!g && !edit) return '';
-    const gg=g||{};
     return `<tr class="${edit?'cell-edit':''}" ${edit?`onclick="editGrade('${p.id}','${fach}')"`:''}>
       <td class="name">${esc(fullName(p))}</td>
-      <td>${c(gg.ha_ueberpruefung)}</td><td>${c(gg.hausaufgaben)}</td>
-      <td>${c(gg.klausur1)}</td><td>${c(gg.klausur2)}</td>
-      <td class="sum">${c(gg.gesamt)}</td><td>${esc(gg.gesamtnote||'')}</td></tr>`;
+      ${cols.map(c=>`<td>${fmt(c, gradeVal(g,c))}</td>`).join('')}</tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
 }
 function editGrade(personId, fach){
+  const cols=gradeColsFor(fach);
   const g=cache.grades.find(x=>x.fach===fach&&x.person_id===personId)||{};
-  const f=(id,lbl,val)=>`<label>${lbl}<input type="number" id="${id}" min="0" max="100" value="${val==null?'':Math.round(val)}"></label>`;
-  const body=f('dg_ha','HA-Überprüfung (%)',g.ha_ueberpruefung)+f('dg_hu','Hausaufgaben (%)',g.hausaufgaben)
-    +f('dg_k1','Klausur 1 (%)',g.klausur1)+f('dg_k2','Klausur 2 (%)',g.klausur2)+f('dg_ges','Gesamt (%)',g.gesamt)
-    +`<label>Note<input id="dg_note" value="${esc(g.gesamtnote||'')}"></label>`;
+  const body=cols.map(c=>{
+    const v=gradeVal(g,c);
+    return c.art==='text'
+      ? `<label>${esc(c.label)}<input id="gc_${c.id}" value="${v==null?'':esc(String(v))}"></label>`
+      : `<label>${esc(c.label)} (%)<input id="gc_${c.id}" type="number" min="0" max="100" value="${v==null?'':Math.round(v)}"></label>`;
+  }).join('');
   openDialog(`${fullName(personById(personId))} – Gesamtbewertung`, body, async()=>{
-    const payload={fach,person_id:personId,
-      ha_ueberpruefung:parseNum($('#dg_ha').value), hausaufgaben:parseNum($('#dg_hu').value),
-      klausur1:parseNum($('#dg_k1').value), klausur2:parseNum($('#dg_k2').value),
-      gesamt:parseNum($('#dg_ges').value), gesamtnote:$('#dg_note').value||null};
-    const {data,error}=await SB.from('grades').upsert(payload,{onConflict:'fach,person_id'}).select().single();
+    const werte={...(g.werte||{})};
+    cols.forEach(c=>{ const raw=($('#gc_'+c.id).value||'').trim();
+      if(raw==='') delete werte[c.id]; else werte[c.id]= c.art==='text'?raw:parseNum(raw); });
+    const {data,error}=await SB.from('grades').upsert({fach,person_id:personId,werte},{onConflict:'fach,person_id'}).select().single();
     if(error){ toast(error.message,'err'); return false; }
     const i=cache.grades.findIndex(x=>x.fach===fach&&x.person_id===personId);
     if(i>=0) cache.grades[i]=data; else cache.grades.push(data);
     renderBewertung(); toast('Gespeichert');
+  });
+}
+function gcAppendRow(){
+  const wrap=document.createElement('div'); wrap.className='gc-row';
+  wrap.innerHTML=`<input class="gc-label" placeholder="Neue Spalte">
+    <select class="gc-art"><option value="zahl">%</option><option value="text">Text</option></select>
+    <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
+  $('#gcList').appendChild(wrap);
+}
+async function delGradeCol(id){
+  if(!confirm('Spalte löschen? Die Werte dieser Spalte gehen verloren.')) return;
+  const {error}=await SB.from('grade_columns').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.gradeCols=cache.gradeCols.filter(c=>c.id!==id);
+  document.querySelector(`#gcList .gc-row[data-id="${id}"]`)?.remove();
+  toast('Spalte gelöscht');
+}
+function manageGradeCols(fach){
+  const cols=gradeColsFor(fach);
+  const rowsHtml=cols.map(c=>`<div class="gc-row" data-id="${c.id}">
+    <input class="gc-label" value="${esc(c.label)}">
+    <select class="gc-art"><option value="zahl" ${c.art!=='text'?'selected':''}>%</option><option value="text" ${c.art==='text'?'selected':''}>Text</option></select>
+    <button type="button" class="btn-ghost" onclick="delGradeCol('${c.id}')">✕</button>
+  </div>`).join('');
+  const body=`<div id="gcList">${rowsHtml}</div>
+    <button type="button" class="btn-ghost" onclick="gcAppendRow()">+ Spalte</button>
+    <p class="muted">Reihenfolge = Anzeige (von oben). Mit „Speichern" übernehmen.</p>`;
+  openDialog(`Spalten – ${fach==='harmonielehre'?'Harmonielehre':'Gehörbildung'}`, body, async()=>{
+    let sort=0;
+    for(const el of $$('#gcList .gc-row')){
+      const label=$('.gc-label',el)?.value.trim(); if(!label) continue;
+      const art=$('.gc-art',el)?.value||'zahl'; sort+=10; const id=el.dataset.id;
+      if(id) await SB.from('grade_columns').update({label,art,sort}).eq('id',id);
+      else   await SB.from('grade_columns').insert({fach,label,art,sort});
+    }
+    await loadAll(); renderBewertung(); toast('Spalten gespeichert');
   });
 }
 
@@ -802,6 +860,7 @@ function bind(){
   $('#gateEmail').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#logoutBtn').onclick=()=>SB.auth.signOut();
   $('#contactSearch').oninput=renderContacts;
+  $$('.grades-cols-btn').forEach(b=>b.onclick=()=>manageGradeCols(b.dataset.fach));
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);
   $('#newMeetingBtn').onclick=()=>{ $('#meetingModal').hidden=false; };
   $('#meetingCancel').onclick=()=>{ $('#meetingModal').hidden=true; };
@@ -809,6 +868,7 @@ function bind(){
   $('#paSearch').oninput=renderPersonAdmin;
   $('#paAddBtn').onclick=addPersonDialog;
   $('#ptAddBtn').onclick=createPractice;
+  $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
   $('#ttNewPlanBtn').onclick=copyPlan;
   $('#ttPlan').onchange=renderStundenplan;
