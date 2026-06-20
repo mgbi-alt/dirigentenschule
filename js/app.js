@@ -502,7 +502,6 @@ function lessonIsMine(r, token){
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
 function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
-const TT_SAS=['Musiktheorie','Gehörbildung'];   // Schüler als "S:"-Zeile
 function lessonFields(r){
   return { ueber:r.ueberschrift||'', stu:schuelerDisplay(r), leh:lehrerDisplay(r), kla:klavierDisplay(r), raum:r.raum||'' };
 }
@@ -529,10 +528,9 @@ function renderStundenplan(){
     const isNew = diffMode && !baseR;
     const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
     const ch=k=> !!baseR && (c[k]||'')!==(b[k]||'');
-    const sL=TT_SAS.includes(r.fach)?'S: ':'';
     const lines=[];
     if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
-    if(c.stu||ch('stu'))     lines.push(line(sL, c.stu, b.stu, ch('stu'), sL?'tt-meta':'tt-stu'));
+    if(c.stu||ch('stu'))     lines.push(line('', c.stu, b.stu, ch('stu'), 'tt-stu'));
     if(c.leh||ch('leh'))     lines.push(line('L: ', c.leh, b.leh, ch('leh')));
     if(c.kla||ch('kla'))     lines.push(line('K: ', c.kla, b.kla, ch('kla')));
     if(c.raum||ch('raum'))   lines.push(line('R: ', c.raum, b.raum, ch('raum'), 'tt-room'));
@@ -543,15 +541,15 @@ function renderStundenplan(){
     return `<div class="tt-cell ${cls} ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
   };
   const removedCell=r=>{
-    const c=lessonFields(r), sL=TT_SAS.includes(r.fach)?'S: ':'';
+    const c=lessonFields(r);
     const lines=[
       c.ueber?`<div class="tt-head"><s>${esc(c.ueber)}</s></div>`:'',
-      c.stu?`<div class="tt-meta"><s>${esc(sL+c.stu)}</s></div>`:'',
+      c.stu?`<div class="tt-stu"><s>${esc(c.stu)}</s></div>`:'',
       c.leh?`<div class="tt-meta"><s>L: ${esc(c.leh)}</s></div>`:'',
       c.kla?`<div class="tt-meta"><s>K: ${esc(c.kla)}</s></div>`:'',
       c.raum?`<div class="tt-room"><s>R: ${esc(c.raum)}</s></div>`:'',
     ].filter(Boolean);
-    while(lines.length<4) lines.push('<div class="tt-meta">&nbsp;</div>');
+    const pad=c.ueber?5:4; while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
     return `<div class="tt-cell tt-removed"><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
   };
   const subjectsHtml=(planRows,removedRows)=>{
@@ -679,16 +677,21 @@ function lessonForm(r){
     <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler (Mehrfachauswahl mit Strg/⌘)
-      <select id="tl_stuids" multiple size="5">${peopleSelectHtml(students().slice().sort(byName), r.schueler_ids)}</select></label>
+      <select id="tl_stuids" multiple size="5">${peopleSelectHtml(students().slice().sort(byName), r.schueler_ids)}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_stuids')">Auswahl leeren</button></label>
     <label>Schüler-Freitext (optional)<input id="tl_stu" value="${esc(r.schueler||'')}" placeholder="falls nicht in der Liste"></label>
     <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
-      <select id="tl_lehids" multiple size="5">${peopleSelectHtml(peopleForSubject(fach,teacherPeople), r.lehrer_ids)}</select></label>
+      <select id="tl_lehids" multiple size="5">${peopleSelectHtml(peopleForSubject(fach,teacherPeople), r.lehrer_ids)}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_lehids')">Auswahl leeren</button></label>
     <label>Lehrer-Kürzel/Freitext (optional)<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
     <label>Klavierbegleitung (Mehrfachauswahl)
-      <select id="tl_kbids" multiple size="4">${peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), r.klavier_ids)}</select></label>
+      <select id="tl_kbids" multiple size="4">${peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), r.klavier_ids)}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_kbids')">Auswahl leeren</button></label>
+    <label>Klavierbegleitung-Freitext (optional)<input id="tl_kla" value="${esc(r.klavier||'')}" placeholder="falls nicht in der Liste"></label>
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
       <datalist id="roomsDatalist">${roomOpts}</datalist></label>`;
 }
+function clearMulti(id){ const el=$('#'+id); if(el) [...el.options].forEach(o=>o.selected=false); }
 function refreshLessonPools(){
   const fach=$('#tl_fach').value;
   const selL=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
@@ -707,6 +710,7 @@ function readLessonForm(){
     lehrer_ids: ids.length?ids:null,
     lehrer:$('#tl_leh').value.trim()||null,
     klavier_ids: kids.length?kids:null,
+    klavier:$('#tl_kla').value.trim()||null,
     raum:$('#tl_raum').value.trim()||null };
 }
 async function ensureRoom(name){
