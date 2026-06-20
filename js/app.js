@@ -7,18 +7,28 @@ let session = null;
 let currentPerson = null;          // Datensatz aus people (per E-Mail/auth_id)
 let isStaff = false;               // lehrer | admin
 let isAdmin = false;
-let seesAll = false;               // Lehrer & Admin sehen alle Schüler
+let seesAll = false;               // Lehrer/Klassenleitung/Admin sehen alle Schüler
+
+// Rollen einer Person (Array 'roles' bevorzugt, Fallback altes 'rolle')
+function personRoles(p){
+  if(!p) return [];
+  if(Array.isArray(p.roles) && p.roles.length) return p.roles;
+  return p.rolle?[p.rolle]:[];
+}
+function hasRole(p, r){ return personRoles(p).includes(r); }
 
 // Darf der aktuelle Nutzer einen Bereich bearbeiten?
 function canEdit(area){
   if(isAdmin) return true;
-  if(currentPerson?.rolle==='lehrer') return currentPerson.permissions?.[area]===true;
+  if(hasRole(currentPerson,'lehrer') || hasRole(currentPerson,'klassenleitung'))
+    return currentPerson.permissions?.[area]===true;
   return false;
 }
-// Welche Schüler-Zeilen sind sichtbar? (Schüler nur sich selbst)
+// Welche Schüler-Zeilen sind sichtbar? (reine Schüler nur sich selbst)
 function visibleStudents(){
-  if(seesAll || !currentPerson || currentPerson.rolle!=='schueler') return students();
-  return students().filter(p=>p.id===currentPerson.id);
+  if(seesAll || !currentPerson) return students();
+  if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
+  return students();
 }
 const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[] };
 
@@ -81,8 +91,8 @@ async function afterSession(){
       .or(`auth_id.eq.${session.user.id},email.eq.${email}`).limit(1);
     currentPerson = data?.[0]||null;
     if(currentPerson){
-      isStaff = ['lehrer','admin'].includes(currentPerson.rolle);
-      isAdmin = currentPerson.rolle==='admin';
+      isAdmin = hasRole(currentPerson,'admin');
+      isStaff = isAdmin || hasRole(currentPerson,'lehrer') || hasRole(currentPerson,'klassenleitung');
       seesAll = isStaff;
       // auth_id nachtragen falls nur per E-Mail gematcht
       if(!currentPerson.auth_id){
@@ -138,7 +148,7 @@ async function loadAll(){
   cache.tt=tt.data||[]; cache.plans=plans.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
-const students = () => cache.people.filter(p=>p.rolle==='schueler'&&p.aktiv);
+const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
 
 // ---------- Navigation ----------
 function showPage(name){
@@ -327,12 +337,12 @@ function createPractice(){
 function renderContacts(){
   if(!session){ $('#contactsGrid').innerHTML='<p class="muted">Bitte anmelden, um Kontakte zu sehen.</p>'; return; }
   const q=($('#contactSearch').value||'').toLowerCase();
-  const list=cache.people.filter(p=>p.aktiv&&fullName(p).toLowerCase().includes(q))
-    .sort((a,b)=>a.sort-b.sort);
-  const roleLabel={schueler:'Schüler',lehrer:'Lehrer',admin:'Admin'};
-  $('#contactsGrid').innerHTML = list.map(p=>{
+  const list=cache.people.filter(p=>p.aktiv&&fullName(p).toLowerCase().includes(q));
+  const roleLabel=Object.fromEntries(ROLES.map(r=>[r.key,r.label]));
+  const card=p=>{
     const img = p.bild_url?`<img src="${esc(p.bild_url)}" alt="">`:`<div class="contact-ph">👤</div>`;
     const mayEdit = isAdmin || (currentPerson&&currentPerson.id===p.id);
+    const pills = personRoles(p).map(r=>`<span class="role-pill">${roleLabel[r]||r}</span>`).join(' ');
     return `<div class="contact-card">${img}<div>
       <div class="nm">${esc(fullName(p))}</div>
       <div class="meta">
@@ -340,10 +350,21 @@ function renderContacts(){
         ${p.email?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a><br>`:''}
         ${p.telefon?`<a href="tel:${esc(p.telefon)}">${esc(p.telefon)}</a>`:''}
       </div>
-      <span class="role-pill">${roleLabel[p.rolle]||p.rolle}</span>
+      <div>${pills}</div>
       ${mayEdit?`<div><button class="btn-ghost edit-btn" onclick="editContact('${p.id}')">Bearbeiten</button></div>`:''}
     </div></div>`;
-  }).join('')||'<p class="muted">Keine Kontakte gefunden.</p>';
+  };
+  // nach Rollen gruppieren (Person erscheint in ihrer höchsten Rolle)
+  const html = ROLES.map(role=>{
+    const grp=list.filter(p=>primaryRole(p)===role.key).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
+    if(!grp.length) return '';
+    return `<h3 class="section-h sm">${role.label}</h3><div class="contacts-grid">${grp.map(card).join('')}</div>`;
+  }).join('');
+  $('#contactsGrid').innerHTML = html || '<p class="muted">Keine Kontakte gefunden.</p>';
+}
+function primaryRole(p){
+  for(const r of ROLES){ if(hasRole(p,r.key)) return r.key; }
+  return 'schueler';
 }
 function editContact(personId){
   const p=personById(personId); if(!p) return;
@@ -415,14 +436,19 @@ function renderStundenplan(){
   const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
   const slots=[...new Map(rows.map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
+  const sAsLine=['Musiktheorie','Gehörbildung'];   // hier Schüler als "S:"-Zeile
   const cellHtml=r=>{
-    const meta=[
-      r.lehrer?`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`:'',
-      r.klavier?`<div class="tt-meta">K: ${esc(r.klavier)}</div>`:'',
-      r.raum?`<div class="tt-room">R: ${esc(r.raum)}</div>`:'',
-    ].join('');
-    return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>
-      ${r.schueler?`<div class="tt-stu">${esc(r.schueler)}</div>`:''}${meta}</div>`;
+    const lines=[];
+    if(r.schueler){
+      lines.push(sAsLine.includes(r.fach)
+        ? `<div class="tt-meta">S: ${esc(r.schueler)}</div>`
+        : `<div class="tt-stu">${esc(r.schueler)}</div>`);
+    }
+    if(r.lehrer)  lines.push(`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`);
+    if(r.klavier) lines.push(`<div class="tt-meta">K: ${esc(r.klavier)}</div>`);
+    if(r.raum)    lines.push(`<div class="tt-room">R: ${esc(r.raum)}</div>`);
+    while(lines.length<4) lines.push('<div class="tt-meta">&nbsp;</div>');  // gleiche Höhe
+    return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${lines.join('')}</div>`;
   };
   const subjectsHtml=slotRows=>{
     const fachs=[...new Set(slotRows.map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
@@ -606,11 +632,14 @@ function renderAdmin(){
   renderPersonAdmin();
 }
 function renderPersonAdmin(){
-  const roleOpts=r=>['schueler','lehrer','admin'].map(x=>
-    `<option value="${x}" ${r===x?'selected':''}>${({schueler:'Schüler',lehrer:'Lehrer',admin:'Admin'})[x]}</option>`).join('');
-  $('#personAdminList').innerHTML = cache.people.map(p=>{
-    const perms = p.rolle==='lehrer'
-      ? `<div class="perm-row">${EDIT_AREAS.map(a=>
+  $('#personAdminList').innerHTML = cache.people
+    .slice().sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')).map(p=>{
+    const roleChecks = ROLES.map(role=>
+      `<label><input type="checkbox" ${hasRole(p,role.key)?'checked':''}
+        onchange="toggleRole('${p.id}','${role.key}',this.checked)"> ${role.label}</label>`).join('');
+    const showPerms = hasRole(p,'lehrer') || hasRole(p,'klassenleitung');
+    const perms = showPerms
+      ? `<div class="perm-row"><span class="muted">Rechte:</span>${EDIT_AREAS.map(a=>
           `<label><input type="checkbox" ${p.permissions?.[a.key]?'checked':''}
             onchange="savePermission('${p.id}','${a.key}',this.checked)"> ${a.label}</label>`).join('')}</div>`
       : '';
@@ -619,11 +648,22 @@ function renderPersonAdmin(){
         <span class="pi-name">${esc(fullName(p))}</span>
         <input class="pi-email" type="email" value="${esc(p.email||'')}" placeholder="E-Mail"
           onchange="savePerson('${p.id}','email',this.value)">
-        <select onchange="savePerson('${p.id}','rolle',this.value)">${roleOpts(p.rolle)}</select>
         <label class="pi-active"><input type="checkbox" ${p.aktiv?'checked':''}
           onchange="savePerson('${p.id}','aktiv',this.checked)"> aktiv</label>
-      </div>${perms}</div>`;
+      </div>
+      <div class="role-row"><span class="muted">Rollen:</span>${roleChecks}</div>
+      ${perms}</div>`;
   }).join('');
+}
+async function toggleRole(id, role, val){
+  const p=cache.people.find(x=>x.id===id); if(!p) return;
+  let roles=[...personRoles(p)];
+  if(val){ if(!roles.includes(role)) roles.push(role); } else roles=roles.filter(r=>r!==role);
+  const {error}=await SB.from('people').update({roles, rolle:roles[0]||null}).eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  p.roles=roles; p.rolle=roles[0]||null;
+  if(id===currentPerson?.id) afterSession();
+  renderPersonAdmin(); toast('Gespeichert');
 }
 async function savePerson(id, field, value){
   const {error}=await SB.from('people').update({[field]:value}).eq('id',id);
@@ -646,7 +686,7 @@ async function addPerson(){
   const vorname=$('#npVorname').value.trim(), nachname=$('#npNachname').value.trim();
   const email=$('#npEmail').value.trim(), rolle=$('#npRolle').value;
   if(!nachname){ toast('Nachname fehlt','err'); return; }
-  const {error}=await SB.from('people').insert({vorname,nachname,email:email||null,rolle,
+  const {error}=await SB.from('people').insert({vorname,nachname,email:email||null,rolle,roles:[rolle],
     sort:(Math.max(0,...cache.people.map(p=>p.sort||0))+10)});
   if(error){ toast(error.message,'err'); return; }
   $('#npVorname').value=$('#npNachname').value=$('#npEmail').value='';

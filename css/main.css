@@ -154,9 +154,9 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .pi-name{font-weight:600;min-width:160px}
 .pi-email{min-width:200px}
 .pi-active{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
-.perm-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
-.perm-row label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
-.perm-row input,.pi-active input{accent-color:var(--accent)}
+.perm-row,.role-row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.perm-row label,.role-row label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
+.perm-row input,.role-row input,.pi-active input{accent-color:var(--accent)}
 
 /* ---- Anmeldeseite (Gate) ---- */
 #authGate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px}
@@ -212,7 +212,8 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-cells.row{flex-direction:row;flex-wrap:wrap}
 .tt-cells.row .tt-cell{flex:1;min-width:130px}
 .tt-cell{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;
-  font-size:12.5px;line-height:1.45;min-height:80px;display:flex;flex-direction:column;gap:1px}
+  font-size:12.5px;line-height:1.45;display:flex;flex-direction:column;gap:1px}
+.tt-cell>div{min-height:1.45em}
 .tt-cell.editable{cursor:pointer}
 .tt-cell.editable:hover{border-color:var(--accent)}
 .tt-free{background:var(--green-bg);border:1px solid var(--border);border-radius:var(--r);

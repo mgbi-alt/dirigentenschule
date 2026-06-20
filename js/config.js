@@ -33,6 +33,14 @@ const EDIT_AREAS = [
 // Spalten-Reihenfolge im Stundenplan
 const FACH_ORDER = ['Musiktheorie','Arrangieren','Dirigieren','Stimmbildung','Klavier','Gehörbildung','Orchesterpraxis','Chorpraxis'];
 
+// Rollen (Mehrfach-Zuordnung möglich). Reihenfolge = Sortierung in Kontakten.
+const ROLES = [
+  { key: 'admin',          label: 'Admin' },
+  { key: 'klassenleitung', label: 'Klassenleitung' },
+  { key: 'lehrer',         label: 'Lehrer' },
+  { key: 'schueler',       label: 'Schüler' },
+];
+
 // Info-Tab: feste PDF-Pläne
 const SITE_DOCS = [
   { key: 'stundenplan_fr', label: 'Stundenplan Freitag' },
