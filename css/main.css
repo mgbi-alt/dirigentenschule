@@ -132,7 +132,8 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 /* ---- Modal ---- */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 .modal[hidden]{display:none}
-.modal-box{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:24px;width:360px;max-width:100%;box-shadow:var(--shadow)}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:24px;width:360px;max-width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shadow)}
+#dlgBody select[multiple]{width:100%}
 .modal-box.wide{width:480px}
 .modal-box h3{margin:0 0 16px}
 .modal-box label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text2);margin-bottom:12px}

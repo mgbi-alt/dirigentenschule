@@ -33,6 +33,9 @@ const EDIT_AREAS = [
 // Spalten-Reihenfolge im Stundenplan
 const FACH_ORDER = ['Musiktheorie','Arrangieren','Dirigieren','Stimmbildung','Klavier','Gehörbildung','Orchesterpraxis','Chorpraxis'];
 
+// Fächer, denen Personen zugeordnet werden können (für die Stundenplan-Auswahl)
+const ASSIGN_SUBJECTS = ['Dirigieren','Stimmbildung','Klavier','Gehörbildung','Musiktheorie','Arrangieren','Klavierbegleitung'];
+
 // Rollen (Mehrfach-Zuordnung möglich). Reihenfolge = Sortierung in Kontakten.
 const ROLES = [
   { key: 'admin',          label: 'Admin' },

@@ -30,7 +30,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -132,7 +132,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -143,11 +143,12 @@ async function loadAll(){
     SB.from('timetable').select('*'),
     SB.from('plans').select('*').order('sort'),
     SB.from('grade_columns').select('*').order('sort'),
+    SB.from('rooms').select('*').order('name'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
-  cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[];
+  cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -447,17 +448,25 @@ function teacherPeople(){
   return cache.people.filter(p=>p.aktiv && (hasRole(p,'lehrer')||hasRole(p,'klassenleitung')||hasRole(p,'admin')))
     .sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
 }
+function byName(a,b){ return fullName(a).localeCompare(fullName(b),'de'); }
+function peopleForSubject(subject, fallback){
+  const assigned=cache.people.filter(p=>p.aktiv && (p.faecher||[]).includes(subject));
+  return (assigned.length?assigned:fallback()).slice().sort(byName);
+}
 function lehrerDisplay(r){
   const ids=(r.lehrer_ids||[]).map(id=>personById(id)).filter(Boolean).map(personToken);
-  if(ids.length) return ids.join(', ');
-  return r.lehrer||'';
+  return ids.length?ids.join(', '):(r.lehrer||'');
 }
-function teacherSelectHtml(selected){
-  const sel=new Set(selected||[]);
-  return teacherPeople().map(p=>`<option value="${p.id}" ${sel.has(p.id)?'selected':''}>${esc(fullName(p))}</option>`).join('');
+function klavierDisplay(r){
+  const ids=(r.klavier_ids||[]).map(id=>personById(id)).filter(Boolean).map(personToken);
+  return ids.length?ids.join(', '):(r.klavier||'');
+}
+function peopleSelectHtml(pool, selectedIds){
+  const sel=new Set(selectedIds||[]);
+  return pool.map(p=>`<option value="${p.id}" ${sel.has(p.id)?'selected':''}>${esc(fullName(p))}</option>`).join('');
 }
 function lessonIsMine(r, token){
-  if(currentPerson && (r.lehrer_ids||[]).includes(currentPerson.id)) return true;
+  if(currentPerson && ((r.lehrer_ids||[]).includes(currentPerson.id) || (r.klavier_ids||[]).includes(currentPerson.id))) return true;
   if(!token) return false; const t=token.toLowerCase();
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
@@ -480,10 +489,10 @@ function renderStundenplan(){
         ? `<div class="tt-meta">S: ${esc(r.schueler)}</div>`
         : `<div class="tt-stu">${esc(r.schueler)}</div>`);
     }
-    const leh=lehrerDisplay(r);
-    if(leh)       lines.push(`<div class="tt-meta">L: ${esc(leh)}</div>`);
-    if(r.klavier) lines.push(`<div class="tt-meta">K: ${esc(r.klavier)}</div>`);
-    if(r.raum)    lines.push(`<div class="tt-room">R: ${esc(r.raum)}</div>`);
+    const leh=lehrerDisplay(r), kla=klavierDisplay(r);
+    if(leh)    lines.push(`<div class="tt-meta">L: ${esc(leh)}</div>`);
+    if(kla)    lines.push(`<div class="tt-meta">K: ${esc(kla)}</div>`);
+    if(r.raum) lines.push(`<div class="tt-room">R: ${esc(r.raum)}</div>`);
     const pad = r.ueberschrift?5:4;
     while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');  // gleiche Höhe
     return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${lines.join('')}</div>`;
@@ -529,7 +538,7 @@ async function copyPlan(){
     if(error){ toast(error.message,'err'); return false; }
     const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
       zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler,
-      lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, raum:r.raum, sort:r.sort}));
+      lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort}));
     if(copies.length){
       const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
       if(e2){ toast(e2.message,'err'); return false; } cache.tt.push(...(ins||[]));
@@ -537,27 +546,46 @@ async function copyPlan(){
     cache.plans.push(plan); fillPlanSelect(); $('#ttPlan').value=plan.id; renderStundenplan(); toast('Plan angelegt');
   });
 }
+const allActive=()=>cache.people.filter(p=>p.aktiv);
 function lessonForm(r){
   r=r||{};
+  const fach=r.fach||'Dirigieren';
   const fachOpts=FACH_ORDER.concat(['Pause']).map(f=>`<option ${r.fach===f?'selected':''}>${f}</option>`).join('');
+  const roomOpts=cache.rooms.map(rm=>`<option value="${esc(rm.name)}">`).join('');
   return `<label>Zeit<input id="tl_zeit" value="${esc(r.zeit||'')}" placeholder="z.B. 10:00 - 10:45"></label>
-    <label>Fach<select id="tl_fach">${fachOpts}</select></label>
+    <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
     <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
-      <select id="tl_lehids" multiple size="5">${teacherSelectHtml(r.lehrer_ids)}</select></label>
+      <select id="tl_lehids" multiple size="5">${peopleSelectHtml(peopleForSubject(fach,teacherPeople), r.lehrer_ids)}</select></label>
     <label>Lehrer-Kürzel/Freitext (optional)<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
-    <label>Klavierbegleitung<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
-    <label>Raum<input id="tl_raum" value="${esc(r.raum||'')}"></label>`;
+    <label>Klavierbegleitung (Mehrfachauswahl)
+      <select id="tl_kbids" multiple size="4">${peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), r.klavier_ids)}</select></label>
+    <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
+      <datalist id="roomsDatalist">${roomOpts}</datalist></label>`;
+}
+function refreshLessonPools(){
+  const fach=$('#tl_fach').value;
+  const selL=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
+  const selK=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
+  $('#tl_lehids').innerHTML=peopleSelectHtml(peopleForSubject(fach,teacherPeople), selL);
+  $('#tl_kbids').innerHTML=peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), selK);
 }
 function readLessonForm(){
   const ids=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
+  const kids=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
   return { zeit:$('#tl_zeit').value.trim(), fach:$('#tl_fach').value,
     ueberschrift:$('#tl_head').value.trim()||null,
     schueler:$('#tl_stu').value.trim()||null,
     lehrer_ids: ids.length?ids:null,
     lehrer:$('#tl_leh').value.trim()||null,
-    klavier:$('#tl_kla').value.trim()||null, raum:$('#tl_raum').value.trim()||null };
+    klavier_ids: kids.length?kids:null,
+    raum:$('#tl_raum').value.trim()||null };
+}
+async function ensureRoom(name){
+  if(!name || cache.rooms.some(r=>r.name===name)) return;
+  const {data}=await SB.from('rooms').insert({name}).select().single();
+  if(data) cache.rooms.push(data);
 }
 function slotSortFor(zeit){ const r=cache.tt.find(x=>x.zeit===zeit); return r?r.zeit_sort:(Math.max(0,...cache.tt.map(x=>x.zeit_sort||0))+1); }
 function editLesson(id){
@@ -565,6 +593,7 @@ function editLesson(id){
   let body=lessonForm(r)+`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
   openDialog('Stundenplan-Eintrag', body, async()=>{
     const upd=readLessonForm(); upd.zeit_sort=slotSortFor(upd.zeit); upd.updated_at=new Date().toISOString();
+    await ensureRoom(upd.raum);
     const {error}=await SB.from('timetable').update(upd).eq('id',id);
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(r,upd); renderStundenplan(); toast('Gespeichert');
@@ -575,6 +604,7 @@ function addLesson(){
   openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:'samstag'}), async()=>{
     const rec=readLessonForm(); rec.tag='samstag'; rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
     rec.sort=(Math.max(0,...cache.tt.filter(x=>x.plan_id===planId&&x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
+    await ensureRoom(rec.raum);
     const {data,error}=await SB.from('timetable').insert(rec).select().single();
     if(error){ toast(error.message,'err'); return false; }
     cache.tt.push(data); renderStundenplan(); toast('Gespeichert');
@@ -741,11 +771,14 @@ function personFormBody(p, withContact){
     <label>Telefon<input id="pe_tel" value="${esc(p.telefon||'')}"></label>` : '';
   const perms = withContact ? `<div class="dlg-group"><b>Bearbeitungsrechte (Lehrer/Klassenleitung)</b>
     ${EDIT_AREAS.map(a=>`<label class="chk"><input type="checkbox" id="pe_perm_${a.key}" ${p.permissions?.[a.key]?'checked':''}> ${a.label}</label>`).join('')}</div>` : '';
+  const faecher = withContact ? `<div class="dlg-group"><b>Fächer (für Stundenplan-Auswahl)</b>
+    ${ASSIGN_SUBJECTS.map((s,i)=>`<label class="chk"><input type="checkbox" id="pe_fach_${i}" ${(p.faecher||[]).includes(s)?'checked':''}> ${esc(s)}</label>`).join('')}</div>` : '';
   return `<label>Vorname<input id="pe_vor" value="${esc(p.vorname||'')}"></label>
     <label>Nachname<input id="pe_nach" value="${esc(p.nachname||'')}"></label>
     <label>E-Mail<input id="pe_mail" type="email" value="${esc(p.email||'')}"></label>
     ${contact}
     <div class="dlg-group"><b>Rollen</b>${roleChecks}</div>
+    ${faecher}
     ${perms}
     ${withContact?`<label class="chk"><input type="checkbox" id="pe_aktiv" ${p.aktiv?'checked':''}> aktiv</label>`:''}`;
 }
@@ -758,6 +791,7 @@ function readPersonForm(withContact){
     upd.aktiv=$('#pe_aktiv').checked;
     const permissions={}; EDIT_AREAS.forEach(a=>{ if($('#pe_perm_'+a.key).checked) permissions[a.key]=true; });
     upd.permissions=permissions;
+    upd.faecher = ASSIGN_SUBJECTS.filter((s,i)=>$('#pe_fach_'+i).checked);
   }
   return upd;
 }
