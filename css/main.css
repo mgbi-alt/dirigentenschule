@@ -243,6 +243,9 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-leg-chg{border-left:3px solid var(--accent)}
 .tt-leg-new{border-left:3px solid var(--green)}
 .tt-leg-rem{border-left:3px solid var(--err);text-decoration:line-through}
+.tt-conflicts{background:var(--red-bg);border:1px solid var(--err);border-radius:var(--r);padding:8px 14px;margin-bottom:12px;font-size:13px}
+.tt-conflicts ul{margin:6px 0 0;padding-left:18px}
+.tt-conflicts li{color:var(--text)}
 .tt-cell .tt-meta{color:var(--text2)}
 .tt-cell .tt-room{color:var(--accent2)}
 .tt-add{font-size:12px;padding:3px 8px;margin-top:2px}

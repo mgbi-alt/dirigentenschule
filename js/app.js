@@ -33,7 +33,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -95,6 +95,7 @@ function applyRoleFlags(){
   $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
   $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
+  $('#ttTimesBtn').hidden = !canEdit('stundenplan');
 }
 async function afterSession(){
   isStaff=false; isAdmin=false; seesAll=false; currentPerson=null;
@@ -154,7 +155,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -166,11 +167,13 @@ async function loadAll(){
     SB.from('plans').select('*').order('sort'),
     SB.from('grade_columns').select('*').order('sort'),
     SB.from('rooms').select('*').order('name'),
+    SB.from('time_slots').select('*').order('sort'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
+  cache.timeSlots=timeSlots.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -510,11 +513,12 @@ function renderStundenplan(){
   const edit=canEdit('stundenplan') && view==='all';
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
-  const diffMode = base && planId!==base.id && view==='all';
+  const diffMode = !!(base && planId!==base.id);
   const baseRows = diffMode ? cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===base.id) : [];
   const baseByKey = new Map(baseRows.map(r=>[lessonKey(r),r]));
   const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
   const planKeys=new Set(rows.map(lessonKey));
+  const planByKey=new Map(rows.map(r=>[lessonKey(r),r]));
   const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
   const line=(prefix,cur,old,changed,cls)=> changed
@@ -550,13 +554,12 @@ function renderStundenplan(){
     while(lines.length<4) lines.push('<div class="tt-meta">&nbsp;</div>');
     return `<div class="tt-cell tt-removed"><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
   };
-  const subjectsHtml=(planRows,zeit)=>{
-    const removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planKeys.has(lessonKey(r))) : [];
-    const fachs=[...new Set(planRows.concat(removed).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
+  const subjectsHtml=(planRows,removedRows)=>{
+    const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
       const pc=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml);
-      const rc=removed.filter(r=>r.fach===f).map(removedCell);
+      const rc=removedRows.filter(r=>r.fach===f).map(removedCell);
       return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
     }).join('');
   };
@@ -571,15 +574,75 @@ function renderStundenplan(){
       return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div>
         <div class="tt-pause ${edit?'editable':''}" ${edit?`onclick="editLesson('${pr.id}')"`:''}>Pause</div></div>`;
     }
+    // entfallene Grundplan-Stunden in diesem Slot
+    let removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planKeys.has(lessonKey(r))) : [];
     if(token){
-      const mine=slotRows.filter(r=>lessonIsMine(r,token));
-      if(!mine.length) return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
-      slotRows=mine;
+      slotRows=slotRows.filter(r=>r.fach!=='Pause' && lessonIsMine(r,token));
+      // für mich: Stunde komplett weg ODER ich aus bestehender Stunde rausgenommen
+      removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && r.fach!=='Pause' && lessonIsMine(r,token) && (()=>{
+          const pk=planByKey.get(lessonKey(r)); return !pk || !lessonIsMine(pk,token);
+        })()) : [];
+      if(!slotRows.length && !removed.length)
+        return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
     }
-    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows,zeit)}</div></div>`;
+    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows,removed)}</div></div>`;
   }).join('');
-  if(diffMode) html=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`+html;
-  $('#ttGrid').innerHTML = html || '<p class="muted">Dieser Plan ist leer.</p>';
+  let banner='';
+  if(diffMode) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
+  if(edit){
+    const conf=planConflicts(rows);
+    if(conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
+  }
+  $('#ttGrid').innerHTML = banner + (html || '<p class="muted">Dieser Plan ist leer.</p>');
+}
+function planConflicts(planRows){
+  const out=[], byZeit={};
+  planRows.forEach(r=>{ if(r.fach==='Pause')return; (byZeit[r.zeit]=byZeit[r.zeit]||[]).push(r); });
+  Object.keys(byZeit).forEach(zeit=>{
+    const rs=byZeit[zeit], pmap=new Map();
+    const add=(ids,r)=> (ids||[]).forEach(id=>{ if(!pmap.has(id)) pmap.set(id,new Map()); pmap.get(id).set(r.id,r.fach); });
+    rs.forEach(r=>{ add(r.schueler_ids,r); add(r.lehrer_ids,r); add(r.klavier_ids,r); });
+    pmap.forEach((lessons,pid)=>{ if(lessons.size>1){ const p=personById(pid);
+      out.push(`${zeit}: ${p?fullName(p):'?'} in ${lessons.size} Stunden (${[...lessons.values()].join(', ')})`); }});
+    const rmap=new Map();
+    rs.forEach(r=>{ if(r.raum){ if(!rmap.has(r.raum)) rmap.set(r.raum,new Map()); rmap.get(r.raum).set(r.id,r.fach); }});
+    rmap.forEach((lessons,rm)=>{ if(lessons.size>1) out.push(`${zeit}: Raum ${rm} doppelt belegt (${[...lessons.values()].join(', ')})`); });
+  });
+  return out;
+}
+function tsAppendRow(){
+  const wrap=document.createElement('div'); wrap.className='gc-row';
+  wrap.innerHTML=`<input class="ts-label" placeholder="z.B. 9:15 - 10:00">
+    <input class="ts-sort" type="number" style="width:70px" placeholder="Sort">
+    <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
+  $('#tsList').appendChild(wrap);
+}
+async function delTimeSlot(id){
+  if(!confirm('Zeit löschen?')) return;
+  const {error}=await SB.from('time_slots').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.timeSlots=cache.timeSlots.filter(s=>s.id!==id);
+  document.querySelector(`#tsList .gc-row[data-id="${id}"]`)?.remove();
+  toast('Gelöscht');
+}
+function manageTimeSlots(){
+  const list=cache.timeSlots.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const rows=list.map(s=>`<div class="gc-row" data-id="${s.id}">
+    <input class="ts-label" value="${esc(s.label)}">
+    <input class="ts-sort" type="number" style="width:70px" value="${s.sort||0}">
+    <button type="button" class="btn-ghost" onclick="delTimeSlot('${s.id}')">✕</button></div>`).join('');
+  const body=`<div id="tsList">${rows}</div>
+    <button type="button" class="btn-ghost" onclick="tsAppendRow()">+ Zeit</button>
+    <p class="muted">„Sort" bestimmt die Reihenfolge im Plan.</p>`;
+  openDialog('Zeiten verwalten', body, async()=>{
+    for(const el of $$('#tsList .gc-row')){
+      const label=$('.ts-label',el)?.value.trim(); if(!label) continue;
+      const sort=parseInt($('.ts-sort',el)?.value)||0; const id=el.dataset.id;
+      if(id) await SB.from('time_slots').update({label,sort}).eq('id',id);
+      else   await SB.from('time_slots').insert({label,sort});
+    }
+    await loadAll(); renderStundenplan(); toast('Zeiten gespeichert');
+  });
 }
 async function copyPlan(){
   const base=basePlan(); if(!base){ toast('Kein Grundplan vorhanden','err'); return; }
@@ -608,7 +671,11 @@ function lessonForm(r){
   const fach=r.fach||'Dirigieren';
   const fachOpts=FACH_ORDER.concat(['Pause']).map(f=>`<option ${r.fach===f?'selected':''}>${f}</option>`).join('');
   const roomOpts=cache.rooms.map(rm=>`<option value="${esc(rm.name)}">`).join('');
-  return `<label>Zeit<input id="tl_zeit" value="${esc(r.zeit||'')}" placeholder="z.B. 10:00 - 10:45"></label>
+  const zeitList=cache.timeSlots.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const hasCur=zeitList.some(s=>s.label===r.zeit);
+  const zeitOpts=(r.zeit&&!hasCur?`<option selected>${esc(r.zeit)}</option>`:'')
+    + zeitList.map(s=>`<option ${r.zeit===s.label?'selected':''}>${esc(s.label)}</option>`).join('');
+  return `<label>Zeit<select id="tl_zeit">${zeitOpts}</select></label>
     <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler (Mehrfachauswahl mit Strg/⌘)
@@ -647,7 +714,10 @@ async function ensureRoom(name){
   const {data}=await SB.from('rooms').insert({name}).select().single();
   if(data) cache.rooms.push(data);
 }
-function slotSortFor(zeit){ const r=cache.tt.find(x=>x.zeit===zeit); return r?r.zeit_sort:(Math.max(0,...cache.tt.map(x=>x.zeit_sort||0))+1); }
+function slotSortFor(zeit){
+  const ts=cache.timeSlots.find(s=>s.label===zeit); if(ts) return ts.sort||0;
+  const r=cache.tt.find(x=>x.zeit===zeit); return r?r.zeit_sort:(Math.max(0,...cache.tt.map(x=>x.zeit_sort||0))+1);
+}
 function editLesson(id){
   const r=cache.tt.find(x=>x.id===id); if(!r) return;
   let body=lessonForm(r)+`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
@@ -966,6 +1036,7 @@ function bind(){
   $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
   $('#ttNewPlanBtn').onclick=copyPlan;
+  $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
   $('#ttView').onchange=renderStundenplan;
 
