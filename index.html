@@ -32,6 +32,7 @@
   <nav id="mainNav">
     <button class="nav-btn active" data-page="start">Start</button>
     <button class="nav-btn" data-page="info">Info</button>
+    <button class="nav-btn" data-page="stundenplan">Stundenplan</button>
     <button class="nav-btn" data-page="ha">Hausaufgaben</button>
     <button class="nav-btn" data-page="kontakte">Kontakte</button>
     <button class="nav-btn" data-page="bewertung">Bewertungen</button>
@@ -98,6 +99,15 @@
         <span class="legend yellow">10</span> <span class="legend green">15+</span></p>
       <div class="table-wrap" id="practiceTable"></div>
     </div>
+  </section>
+
+  <!-- ========== STUNDENPLAN ========== -->
+  <section class="page" id="page-stundenplan">
+    <div class="toolbar">
+      <h2 class="section-h">Stundenplan Samstag</h2>
+      <button class="btn-primary" id="ttAddBtn" hidden>+ Eintrag</button>
+    </div>
+    <div id="ttGrid"></div>
   </section>
 
   <!-- ========== KONTAKTE ========== -->

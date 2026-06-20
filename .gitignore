@@ -10,3 +10,4 @@ node_modules/
 hk_*.csv
 *-export.csv
 supabase_import_data.sql
+seed_stundenplan_*.sql

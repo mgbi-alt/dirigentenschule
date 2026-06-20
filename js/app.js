@@ -20,7 +20,7 @@ function visibleStudents(){
   if(seesAll || !currentPerson || currentPerson.rolle!=='schueler') return students();
   return students().filter(p=>p.id===currentPerson.id);
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -98,6 +98,7 @@ async function afterSession(){
   $('#newMeetingBtn').hidden = !canEdit('theorie');
   $('#annNewBtn').hidden = !canEdit('infos');
   $('#ptAddBtn').hidden = !currentPerson;
+  $('#ttAddBtn').hidden = !canEdit('stundenplan');
   await loadAll();
   renderActivePage();
 }
@@ -119,7 +120,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -127,10 +128,12 @@ async function loadAll(){
     SB.from('theory_status').select('*'),
     SB.from('tests').select('*'),
     SB.from('grades').select('*'),
+    SB.from('timetable').select('*'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
+  cache.tt=tt.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>p.rolle==='schueler'&&p.aktiv);
@@ -143,8 +146,8 @@ function showPage(name){
 }
 function renderActivePage(){
   const active = $('.page.active')?.id.replace('page-','');
-  ({start:renderStart, ha:renderHA, info:renderInfoTab, kontakte:renderContacts,
-    bewertung:renderBewertung, admin:renderAdmin}[active]||(()=>{}))();
+  ({start:renderStart, ha:renderHA, info:renderInfoTab, stundenplan:renderStundenplan,
+    kontakte:renderContacts, bewertung:renderBewertung, admin:renderAdmin}[active]||(()=>{}))();
 }
 
 // ---------- START ----------
@@ -379,6 +382,78 @@ async function uploadSiteDoc(key, file){
   const i=cache.docs.findIndex(x=>x.key===key);
   if(i>=0) cache.docs[i].url=url; else cache.docs.push({key,url});
   renderInfoTab(); toast('Hochgeladen');
+}
+
+// ---------- STUNDENPLAN ----------
+function renderStundenplan(){
+  const edit=canEdit('stundenplan');
+  const rows=[...cache.tt].filter(r=>r.tag==='samstag');
+  // Slots in Reihenfolge
+  const slots=[...new Map(rows.map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
+  const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
+  let html=slots.map(zeit=>{
+    const slotRows=rows.filter(r=>r.zeit===zeit);
+    // Pause als Band
+    if(slotRows.length===1 && slotRows[0].fach==='Pause'){
+      return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-pause">Pause</div></div>`;
+    }
+    const fachs=[...new Set(slotRows.map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
+    const cols=fachs.map(f=>{
+      const cells=slotRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(r=>{
+        const meta=[
+          r.lehrer?`<div class="tt-meta">L: ${esc(r.lehrer)}</div>`:'',
+          r.klavier?`<div class="tt-meta">K: ${esc(r.klavier)}</div>`:'',
+          r.raum?`<div class="tt-room">R: ${esc(r.raum)}</div>`:'',
+        ].join('');
+        return `<div class="tt-cell ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>
+          ${r.schueler?`<div class="tt-stu">${esc(r.schueler)}</div>`:''}${meta}</div>`;
+      }).join('');
+      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div>${cells}</div>`;
+    }).join('');
+    return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${cols}</div></div>`;
+  }).join('');
+  $('#ttGrid').innerHTML = html || '<p class="muted">Noch kein Stundenplan. Über „+ Eintrag" anlegen.</p>';
+}
+function lessonForm(r){
+  r=r||{};
+  const fachOpts=FACH_ORDER.concat(['Pause']).map(f=>`<option ${r.fach===f?'selected':''}>${f}</option>`).join('');
+  return `<label>Zeit<input id="tl_zeit" value="${esc(r.zeit||'')}" placeholder="z.B. 10:00 - 10:45"></label>
+    <label>Fach<select id="tl_fach">${fachOpts}</select></label>
+    <label>Schüler / Gruppe<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
+    <label>Lehrer<input id="tl_leh" value="${esc(r.lehrer||'')}"></label>
+    <label>Klavierbegleitung<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
+    <label>Raum<input id="tl_raum" value="${esc(r.raum||'')}"></label>`;
+}
+function readLessonForm(){
+  return { zeit:$('#tl_zeit').value.trim(), fach:$('#tl_fach').value,
+    schueler:$('#tl_stu').value.trim()||null, lehrer:$('#tl_leh').value.trim()||null,
+    klavier:$('#tl_kla').value.trim()||null, raum:$('#tl_raum').value.trim()||null };
+}
+function slotSortFor(zeit){ const r=cache.tt.find(x=>x.zeit===zeit); return r?r.zeit_sort:(Math.max(0,...cache.tt.map(x=>x.zeit_sort||0))+1); }
+function editLesson(id){
+  const r=cache.tt.find(x=>x.id===id); if(!r) return;
+  let body=lessonForm(r)+`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
+  openDialog('Stundenplan-Eintrag', body, async()=>{
+    const upd=readLessonForm(); upd.zeit_sort=slotSortFor(upd.zeit); upd.updated_at=new Date().toISOString();
+    const {error}=await SB.from('timetable').update(upd).eq('id',id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(r,upd); renderStundenplan(); toast('Gespeichert');
+  });
+}
+function addLesson(){
+  openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:'samstag'}), async()=>{
+    const rec=readLessonForm(); rec.tag='samstag'; rec.zeit_sort=slotSortFor(rec.zeit);
+    rec.sort=(Math.max(0,...cache.tt.filter(x=>x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
+    const {data,error}=await SB.from('timetable').insert(rec).select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    cache.tt.push(data); renderStundenplan(); toast('Gespeichert');
+  });
+}
+async function delLesson(id){
+  if(!confirm('Diesen Eintrag löschen?')) return;
+  const {error}=await SB.from('timetable').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.tt=cache.tt.filter(x=>x.id!==id); closeDialog(); renderStundenplan(); toast('Gelöscht');
 }
 
 // ---------- BEWERTUNGEN ----------
@@ -667,6 +742,7 @@ function bind(){
   $('#importBtn').onclick=runImport;
   $('#npAddBtn').onclick=addPerson;
   $('#ptAddBtn').onclick=createPractice;
+  $('#ttAddBtn').onclick=addLesson;
 
   // Generischer Dialog
   $('#dlgCancel').onclick=closeDialog;

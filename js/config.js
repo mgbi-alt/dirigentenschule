@@ -25,9 +25,13 @@ const EDIT_AREAS = [
   { key: 'zeiten',    label: 'Übezeiten' },
   { key: 'theorie',   label: 'Musiktheorie' },
   { key: 'tests',     label: 'Tests' },
-  { key: 'bewertung', label: 'Gesamtbewertung' },
-  { key: 'infos',     label: 'Infos (Startseite)' },
+  { key: 'bewertung',   label: 'Gesamtbewertung' },
+  { key: 'infos',       label: 'Infos (Startseite)' },
+  { key: 'stundenplan', label: 'Stundenplan' },
 ];
+
+// Spalten-Reihenfolge im Stundenplan
+const FACH_ORDER = ['Musiktheorie','Arrangieren','Dirigieren','Stimmbildung','Klavier','Gehörbildung','Orchesterpraxis','Chorpraxis'];
 
 // Info-Tab: feste PDF-Pläne
 const SITE_DOCS = [

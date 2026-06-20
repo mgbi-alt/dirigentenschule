@@ -202,6 +202,23 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .cell-edit{cursor:pointer}
 .cell-edit:hover{outline:1px solid var(--accent)}
 
+/* ---- Stundenplan ---- */
+.tt-slot{display:flex;gap:14px;margin-bottom:14px;align-items:flex-start}
+.tt-time{flex:0 0 92px;font-weight:600;color:var(--accent2);font-size:13px;padding-top:6px}
+.tt-subjects{display:flex;gap:12px;flex-wrap:wrap;flex:1}
+.tt-subject{flex:1;min-width:150px}
+.tt-fach{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:3px}
+.tt-cell{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;font-size:12.5px;line-height:1.45}
+.tt-cell.editable{cursor:pointer}
+.tt-cell.editable:hover{border-color:var(--accent)}
+.tt-stu{font-weight:600;color:var(--text)}
+.tt-cell .tt-meta{color:var(--text2)}
+.tt-cell .tt-room{color:var(--accent2)}
+.tt-add{font-size:12px;padding:3px 8px;margin-top:2px}
+.tt-pause{background:var(--bg2);border:1px dashed var(--border);border-radius:var(--r);
+  text-align:center;color:var(--text2);padding:8px;font-size:13px;flex:1}
+.tt-band{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;flex:1}
+
 /* ---- Toast ---- */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
   background:var(--bg2);border:1px solid var(--accent);color:var(--text);
