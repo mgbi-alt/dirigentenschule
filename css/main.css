@@ -158,6 +158,17 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .perm-row label{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
 .perm-row input,.pi-active input{accent-color:var(--accent)}
 
+/* ---- Anmeldeseite (Gate) ---- */
+#authGate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px}
+#authGate[hidden]{display:none}
+.gate-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);padding:34px 30px;
+  width:340px;max-width:100%;text-align:center;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
+.gate-logo{font-size:42px}
+.gate-card h1{margin:0;font-size:24px;color:var(--accent2)}
+.gate-card>p{margin:0 0 6px;color:var(--text2)}
+.gate-card input{width:100%}
+.gate-err{color:#e88;min-height:18px;font-size:13px;margin:0}
+
 /* ---- Generischer Dialog ---- */
 #dlgBody{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
 #dlgBody label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2)}

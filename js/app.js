@@ -65,8 +65,15 @@ async function initAuth(){
   await afterSession();
   SB.auth.onAuthStateChange((_e,s)=>{ session=s; afterSession(); });
 }
+function applyAuthGate(){
+  const inApp = !!session;
+  $('#authGate').hidden = inApp;
+  $('#appHeader').hidden = !inApp;
+  $('#appMain').hidden = !inApp;
+}
 async function afterSession(){
-  isStaff=false; isAdmin=false; currentPerson=null;
+  isStaff=false; isAdmin=false; seesAll=false; currentPerson=null;
+  applyAuthGate();
   if(session?.user){
     // Person über auth_id oder E-Mail zuordnen
     const email=session.user.email;
@@ -82,10 +89,10 @@ async function afterSession(){
         SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
       }
     }
-    $('#loginBtn').hidden=true; $('#logoutBtn').hidden=false;
+    $('#logoutBtn').hidden=false;
     $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
   }else{
-    $('#loginBtn').hidden=false; $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
+    $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
   }
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
   $('#newMeetingBtn').hidden = !canEdit('theorie');
@@ -94,11 +101,16 @@ async function afterSession(){
   await loadAll();
   renderActivePage();
 }
-async function login(){
-  const email=$('#loginEmail').value.trim(), password=$('#loginPass').value;
+async function gateLogin(){
+  const email=$('#gateEmail').value.trim(), password=$('#gatePass').value;
+  $('#gateErr').textContent='';
+  if(!email||!password){ $('#gateErr').textContent='E-Mail und Passwort eingeben.'; return; }
+  $('#gateLogin').disabled=true;
   const { error } = await SB.auth.signInWithPassword({email,password});
-  if(error){ $('#loginErr').textContent=error.message; return; }
-  $('#loginModal').hidden=true; $('#loginErr').textContent='';
+  $('#gateLogin').disabled=false;
+  if(error){ $('#gateErr').textContent=error.message; return; }
+  $('#gatePass').value='';
+  // Erfolg: onAuthStateChange → afterSession → applyAuthGate blendet die App ein
 }
 
 // ---------- Data ----------
@@ -651,9 +663,9 @@ function bind(){
     $$('.subpage',sp).forEach(p=>p.classList.toggle('active',p.id==='sub-'+b.dataset.sub));
     renderActivePage();
   }));
-  $('#loginBtn').onclick=()=>{ $('#loginModal').hidden=false; };
-  $('#loginCancel').onclick=()=>{ $('#loginModal').hidden=true; };
-  $('#loginSubmit').onclick=login;
+  $('#gateLogin').onclick=gateLogin;
+  $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
+  $('#gateEmail').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#logoutBtn').onclick=()=>SB.auth.signOut();
   $('#contactSearch').oninput=renderContacts;
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);

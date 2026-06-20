@@ -10,8 +10,21 @@
 </head>
 <body>
 
+<!-- ========== ANMELDESEITE (Gate) ========== -->
+<div id="authGate">
+  <div class="gate-card">
+    <div class="gate-logo">🎼</div>
+    <h1>Dirigentenschule</h1>
+    <p>Bitte melde dich an</p>
+    <input type="email" id="gateEmail" placeholder="E-Mail" autocomplete="username">
+    <input type="password" id="gatePass" placeholder="Passwort" autocomplete="current-password">
+    <button class="btn-primary" id="gateLogin">Anmelden</button>
+    <p class="gate-err" id="gateErr"></p>
+  </div>
+</div>
+
 <!-- ========== HEADER ========== -->
-<header id="appHeader">
+<header id="appHeader" hidden>
   <div class="hd-left">
     <span class="hd-logo">🎼</span>
     <span class="hd-title">Dirigentenschule</span>
@@ -26,12 +39,11 @@
   </nav>
   <div class="hd-right">
     <span id="userBadge" class="user-badge"></span>
-    <button id="loginBtn" class="btn-ghost">Anmelden</button>
     <button id="logoutBtn" class="btn-ghost" hidden>Abmelden</button>
   </div>
 </header>
 
-<main id="appMain">
+<main id="appMain" hidden>
 
   <!-- ========== START ========== -->
   <section class="page active" id="page-start">
@@ -164,20 +176,6 @@
   </section>
 
 </main>
-
-<!-- ========== LOGIN MODAL ========== -->
-<div class="modal" id="loginModal" hidden>
-  <div class="modal-box">
-    <h3>Anmelden</h3>
-    <input type="email" id="loginEmail" placeholder="E-Mail">
-    <input type="password" id="loginPass" placeholder="Passwort">
-    <div class="modal-actions">
-      <button class="btn-ghost" id="loginCancel">Abbrechen</button>
-      <button class="btn-primary" id="loginSubmit">Anmelden</button>
-    </div>
-    <p class="modal-err" id="loginErr"></p>
-  </div>
-</div>
 
 <!-- ========== TREFFEN MODAL ========== -->
 <div class="modal" id="meetingModal" hidden>
