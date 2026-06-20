@@ -149,14 +149,6 @@ function renderActivePage(){
 
 // ---------- START ----------
 function renderStart(){
-  const cards=[
-    {num:students().length, lbl:'Schüler'},
-    {num:cache.meetings.length, lbl:'Theorie-Treffen'},
-    {num:cache.practice.length, lbl:'Übezeiten-Einträge'},
-    {num:cache.tests.length, lbl:'Tests erfasst'},
-  ];
-  $('#startCards').innerHTML = cards.map(c=>
-    `<div class="stat-card"><div class="num">${c.num}</div><div class="lbl">${c.lbl}</div></div>`).join('');
   const canInfo=canEdit('infos');
   $('#announcementsList').innerHTML = cache.ann.length
     ? cache.ann.map(a=>`<div class="ann-item"><span class="date">${fmtDate(a.datum)}</span>
