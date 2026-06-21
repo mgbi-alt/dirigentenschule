@@ -210,31 +210,43 @@ function renderActivePage(){
 
 // ---------- START ----------
 function renderStart(){
-  // Abmeldungen je Treffen – aktuelles Treffen sichtbar, vergangene als Anhang
-  const absBlock=t=>{
-    const list=absencesForPlan(t.id);
-    const items=list.length?list.map(a=>{ const p=personById(a.person_id);
-      const rolle=p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung'))?'Lehrer':(p&&hasRole(p,'admin')?'Admin':'Schüler');
-      return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; }).join('')
-      : '<li class="muted">Keine Abmeldungen.</li>';
-    return `<div class="ann-item"><h4>${esc(t.name)} ${t.datum?`<span class="date">${fmtDate(t.datum)}</span>`:''}</h4>
-      <ul class="abs-ul">${items}</ul></div>`;
-  };
-  const cur=currentTreffen();
-  const others=cache.plans.filter(p=>!p.is_base && (!cur||p.id!==cur.id))
-    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
-  let absHtml = cur?absBlock(cur):'<p class="muted">Kein aktuelles Treffen.</p>';
-  if(others.length) absHtml += `<details class="past-termine"><summary>Vergangene Termine (${others.length})</summary>${others.map(absBlock).join('')}</details>`;
-  $('#absencesList').innerHTML = absHtml;
+  // Kennzahlen
+  const cards=[
+    {n:students().length, l:'Schüler'},
+    {n:cache.meetings.length, l:'Theorie-Treffen'},
+    {n:cache.plans.filter(p=>!p.is_base).length, l:'Treffen'},
+    {n:cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===basePlan()?.id).length, l:'Stunden (Grundplan)'},
+  ];
+  const sc=$('#startCards'); if(sc) sc.innerHTML=cards.map(c=>`<div class="stat-card"><div class="num">${c.n}</div><div class="lbl">${c.l}</div></div>`).join('');
 
   const canInfo=canEdit('infos');
-  $('#announcementsList').innerHTML = cache.ann.length
-    ? cache.ann.map(a=>`<div class="ann-item"><span class="date">${fmtDate(a.datum)}</span>
-        <h4>${esc(a.titel)}</h4><div class="ann-body">${sanitizeHtml(a.text)}</div>
-        ${canInfo?`<div class="ann-actions">
-          <button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
-          <button class="btn-ghost" onclick="delAnn('${a.id}')">Löschen</button></div>`:''}</div>`).join('')
-    : '<p class="muted">Noch keine Infos.</p>';
+  const today=new Date().toISOString().slice(0,10);
+  const absLi=a=>{ const p=personById(a.person_id);
+    const rolle=p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung'))?'Lehrer':(p&&hasRole(p,'admin')?'Admin':'Schüler');
+    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; };
+  const infoHtml=a=>`<div class="ann-block"><h4>${esc(a.titel)} ${a.datum?`<span class="date">${fmtDate(a.datum)}</span>`:''}</h4>
+      <div class="ann-body">${sanitizeHtml(a.text)}</div>
+      ${canInfo?`<div class="ann-actions"><button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
+        <button class="btn-ghost" onclick="delAnn('${a.id}')">Löschen</button></div>`:''}</div>`;
+  // Einheiten: pro Treffen (Info(s) + Abmeldungen), plus freie Infos ohne Treffen
+  const units=[];
+  cache.plans.filter(p=>!p.is_base).forEach(t=>{
+    const infos=cache.ann.filter(a=>a.plan_id===t.id);
+    const body=infos.length ? infos.map(infoHtml).join('<hr class="ann-sep">')
+      : `<div class="ann-block"><h4>${esc(t.name)} ${t.datum?`<span class="date">${fmtDate(t.datum)}</span>`:''}</h4>
+         <div class="ann-body muted">noch keine Infos</div></div>`;
+    units.push({ date:t.datum||'', past:!!(t.datum && t.datum<today), body, abs:absencesForPlan(t.id) });
+  });
+  cache.ann.filter(a=>!a.plan_id).forEach(a=>units.push({ date:a.datum||'', past:false, body:infoHtml(a), abs:[] }));
+
+  const unitHtml=u=>`<div class="ann-item">${u.body}
+    ${u.abs.length?`<div class="ann-abs"><b>Abmeldungen:</b><ul class="abs-ul">${u.abs.map(absLi).join('')}</ul></div>`:''}</div>`;
+  const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
+  const current=units.filter(u=>!u.past).sort(byDate);
+  const past=units.filter(u=>u.past).sort(byDate);
+  let html=current.length?current.map(unitHtml).join(''):'<p class="muted">Noch keine Infos.</p>';
+  if(past.length) html+=`<details class="past-termine"><summary>Vergangene Termine (${past.length})</summary>${past.map(unitHtml).join('')}</details>`;
+  $('#announcementsList').innerHTML = html;
 }
 
 // ---------- HAUSAUFGABEN ----------

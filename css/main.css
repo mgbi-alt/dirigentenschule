@@ -80,6 +80,9 @@ em{color:var(--text2);font-style:normal}
 .ann-item p{margin:6px 0 0;color:var(--text2)}
 .abs-ul{margin:6px 0 0;padding-left:18px;color:var(--text2);font-size:14px}
 .abs-ul li{margin:2px 0}
+.ann-sep{border:none;border-top:1px solid var(--border);margin:10px 0}
+.ann-abs{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)}
+.ann-abs b{font-size:13px;color:var(--text2)}
 .past-termine{margin-top:10px}
 .past-termine>summary{cursor:pointer;color:var(--text2);font-size:13px;padding:6px 0;list-style:revert}
 .past-termine[open]>summary{color:var(--accent2)}
