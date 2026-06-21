@@ -91,6 +91,7 @@ function applyRoleFlags(){
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
   $('#newMeetingBtn').hidden = !canEdit('theorie');
   $('#annNewBtn').hidden = !canEdit('infos');
+  $('#absNewBtn').hidden = !canEdit('abmeldungen');
   $('#ptAddBtn').hidden = !currentPerson;
   $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
@@ -195,18 +196,22 @@ function renderActivePage(){
 
 // ---------- START ----------
 function renderStart(){
-  // Abmeldungen je Treffen
-  const treffen=cache.plans.filter(p=>!p.is_base)
-    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
-  const absBlocks=treffen.map(t=>{
-    const list=absencesForPlan(t.id); if(!list.length) return '';
-    const items=list.map(a=>{ const p=personById(a.person_id);
+  // Abmeldungen je Treffen – aktuelles Treffen sichtbar, vergangene als Anhang
+  const absBlock=t=>{
+    const list=absencesForPlan(t.id);
+    const items=list.length?list.map(a=>{ const p=personById(a.person_id);
       const rolle=p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung'))?'Lehrer':(p&&hasRole(p,'admin')?'Admin':'Schüler');
-      return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; }).join('');
+      return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; }).join('')
+      : '<li class="muted">Keine Abmeldungen.</li>';
     return `<div class="ann-item"><h4>${esc(t.name)} ${t.datum?`<span class="date">${fmtDate(t.datum)}</span>`:''}</h4>
       <ul class="abs-ul">${items}</ul></div>`;
-  }).filter(Boolean).join('');
-  $('#absencesList').innerHTML = absBlocks || '<p class="muted">Keine Abmeldungen.</p>';
+  };
+  const cur=currentTreffen();
+  const others=cache.plans.filter(p=>!p.is_base && (!cur||p.id!==cur.id))
+    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  let absHtml = cur?absBlock(cur):'<p class="muted">Kein aktuelles Treffen.</p>';
+  if(others.length) absHtml += `<details class="past-termine"><summary>Vergangene Termine (${others.length})</summary>${others.map(absBlock).join('')}</details>`;
+  $('#absencesList').innerHTML = absHtml;
 
   const canInfo=canEdit('infos');
   $('#announcementsList').innerHTML = cache.ann.length
@@ -475,7 +480,7 @@ function currentPlanId(){ const v=$('#ttPlan')?.value; return v||basePlan()?.id;
 function fillPlanSelect(){
   const sel=$('#ttPlan'); if(!sel) return; const cur=sel.value;
   const ordered=[...cache.plans].sort((a,b)=>(b.is_base?1:0)-(a.is_base?1:0) || (a.sort-b.sort));
-  sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}${p.datum?` (${fmtDate(p.datum)})`:''}</option>`).join('');
   if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
   else { const b=basePlan(); if(b) sel.value=b.id; }
 }
@@ -765,6 +770,35 @@ function manageAbsences(planId){
       <button type="button" class="btn-primary" onclick="addAbsence('${planId}')">+</button>
     </div>`;
   openDialog(`Abmeldungen – ${esc(plan?plan.name:'')}`, body, ()=>{});
+}
+function currentTreffen(){
+  const today=new Date().toISOString().slice(0,10);
+  const dated=cache.plans.filter(p=>!p.is_base&&p.datum);
+  const upcoming=dated.filter(p=>p.datum>=today).sort((a,b)=>a.datum.localeCompare(b.datum));
+  if(upcoming.length) return upcoming[0];
+  const past=[...dated].sort((a,b)=>b.datum.localeCompare(a.datum));
+  if(past.length) return past[0];
+  return cache.plans.filter(p=>!p.is_base)[0]||null;
+}
+function addAbsenceDialog(){
+  const treffen=cache.plans.filter(p=>!p.is_base).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  if(!treffen.length){ toast('Kein Treffen vorhanden – bitte im Admin anlegen','err'); return; }
+  const cur=currentTreffen();
+  const tOpts=treffen.map(t=>`<option value="${t.id}" ${cur&&t.id===cur.id?'selected':''}>${esc(t.name)}${t.datum?' · '+fmtDate(t.datum):''}</option>`).join('');
+  const pOpts=cache.people.filter(p=>p.aktiv).sort(byName)
+    .map(p=>`<option value="${p.id}">${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`).join('');
+  const body=`<label>Treffen<select id="ab_plan">${tOpts}</select></label>
+    <label>Person<select id="ab_person">${pOpts}</select></label>
+    <label>Grund<input id="ab_grund" placeholder="z.B. krank"></label>`;
+  openDialog('Abmeldung hinzufügen', body, async()=>{
+    const plan_id=$('#ab_plan').value, person_id=$('#ab_person').value, grund=$('#ab_grund').value.trim()||null;
+    if(!plan_id||!person_id){ toast('Treffen/Person fehlt','err'); return false; }
+    const {data,error}=await SB.from('absences').upsert({plan_id,person_id,grund},{onConflict:'plan_id,person_id'}).select().single();
+    if(error){ toast(error.message,'err'); return false; }
+    const i=cache.absences.findIndex(a=>a.plan_id===plan_id&&a.person_id===person_id);
+    if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
+    renderStart(); toast('Abmeldung gespeichert');
+  });
 }
 async function addAbsence(planId){
   const pid=$('#absPerson').value; if(!pid) return;
@@ -1187,6 +1221,7 @@ function bind(){
 
   // Info-Rich-Editor
   $('#annNewBtn').onclick=()=>openAnnEditor();
+  $('#absNewBtn').onclick=addAbsenceDialog;
   $('#annCancel').onclick=closeAnnEditor;
   $('#annSave').onclick=saveAnn;
   $('#annNewTreffen').onclick=annNewTreffen;

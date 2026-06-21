@@ -80,6 +80,9 @@ em{color:var(--text2);font-style:normal}
 .ann-item p{margin:6px 0 0;color:var(--text2)}
 .abs-ul{margin:6px 0 0;padding-left:18px;color:var(--text2);font-size:14px}
 .abs-ul li{margin:2px 0}
+.past-termine{margin-top:10px}
+.past-termine>summary{cursor:pointer;color:var(--text2);font-size:13px;padding:6px 0;list-style:revert}
+.past-termine[open]>summary{color:var(--accent2)}
 .ann-treffen{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin:6px 0}
 .ann-treffen select{flex:1}
 

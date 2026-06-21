@@ -28,6 +28,7 @@ const EDIT_AREAS = [
   { key: 'bewertung',   label: 'Gesamtbewertung' },
   { key: 'infos',       label: 'Infos (Startseite)' },
   { key: 'stundenplan', label: 'Stundenplan' },
+  { key: 'abmeldungen', label: 'Abmeldungen' },
 ];
 
 // Spalten-Reihenfolge im Stundenplan
