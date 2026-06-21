@@ -275,4 +275,16 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 @media(max-width:640px){
   #mainNav{order:3;flex-basis:100%;overflow-x:auto}
   .hero h1{font-size:24px}
+  #appMain{padding:16px 10px 50px}
+  /* Stundenplan: Fächer nebeneinander, horizontal scrollbar, kleinere Schrift */
+  .tt-slot{gap:8px}
+  .tt-time{flex:0 0 54px;font-size:11px;padding-top:24px}
+  .tt-subjects{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:6px}
+  .tt-subject{flex:0 0 auto;min-width:116px}
+  .tt-cells.row{flex-wrap:nowrap}
+  .tt-cells.row .tt-cell{min-width:104px}
+  .tt-cell{font-size:10.5px;padding:6px 7px}
+  .tt-fach{font-size:11.5px}
+  .tt-head{font-size:10.5px}
+  .tt-free,.tt-pause{font-size:11px}
 }

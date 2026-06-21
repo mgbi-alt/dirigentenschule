@@ -96,6 +96,8 @@ function applyRoleFlags(){
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
   $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
   $('#ttTimesBtn').hidden = !canEdit('stundenplan');
+  // Lehrer/Schüler standardmäßig „Mein Plan", Admin „Gesamtplan"
+  const tv=$('#ttView'); if(tv) tv.value = isAdmin ? 'all' : 'mine';
 }
 async function afterSession(){
   isStaff=false; isAdmin=false; seesAll=false; currentPerson=null;
