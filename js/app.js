@@ -45,6 +45,19 @@ function toast(msg,type='ok'){
   const t=$('#toast'); t.textContent=msg; t.className='toast '+type; t.hidden=false;
   clearTimeout(t._t); t._t=setTimeout(()=>t.hidden=true,2800);
 }
+// Bereinigt vom Editor gespeichertes HTML (entfernt Skripte & Event-Handler) – Schutz vor XSS
+function sanitizeHtml(html){
+  const tpl=document.createElement('template'); tpl.innerHTML=html||'';
+  tpl.content.querySelectorAll('script,iframe,object,embed,link,meta,style,form').forEach(n=>n.remove());
+  tpl.content.querySelectorAll('*').forEach(el=>{
+    [...el.attributes].forEach(a=>{
+      const n=a.name.toLowerCase();
+      if(n.startsWith('on')) el.removeAttribute(a.name);
+      else if((n==='href'||n==='src') && /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
+    });
+  });
+  return tpl.innerHTML;
+}
 function parseNum(s){
   if(s==null) return null;
   const m=String(s).replace(/[^0-9,.\-]/g,'').replace(',','.');
@@ -216,7 +229,7 @@ function renderStart(){
   const canInfo=canEdit('infos');
   $('#announcementsList').innerHTML = cache.ann.length
     ? cache.ann.map(a=>`<div class="ann-item"><span class="date">${fmtDate(a.datum)}</span>
-        <h4>${esc(a.titel)}</h4><div class="ann-body">${a.text||''}</div>
+        <h4>${esc(a.titel)}</h4><div class="ann-body">${sanitizeHtml(a.text)}</div>
         ${canInfo?`<div class="ann-actions">
           <button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
           <button class="btn-ghost" onclick="delAnn('${a.id}')">Löschen</button></div>`:''}</div>`).join('')
