@@ -66,9 +66,15 @@
 
   <!-- ========== INFO (Pläne) ========== -->
   <section class="page" id="page-info">
-    <h2 class="section-h">Stundenpläne & Termine</h2>
-    <p class="muted">Pläne als PDF ansehen und herunterladen.</p>
-    <div id="infoDocs"></div>
+    <div class="toolbar">
+      <h2 class="section-h">Stundenpläne & Termine</h2>
+      <div class="filters">
+        <label>Ansicht <select id="infoDocSel"></select></label>
+        <label class="btn-primary" id="infoUploadLbl" hidden style="cursor:pointer">PDF hochladen
+          <input type="file" id="infoUploadFile" accept="application/pdf" hidden></label>
+      </div>
+    </div>
+    <div id="infoDocView"></div>
   </section>
 
   <!-- ========== HAUSAUFGABEN ========== -->

@@ -466,18 +466,18 @@ function editContact(personId){
 
 // ---------- INFO-TAB (Pläne) ----------
 function renderInfoTab(){
-  $('#infoDocs').innerHTML = SITE_DOCS.map(d=>{
-    const doc=cache.docs.find(x=>x.key===d.key);
-    const viewer = doc?.url
-      ? `<iframe src="${esc(doc.url)}#toolbar=1" title="${esc(d.label)}"></iframe>
-         <div style="margin-top:8px"><a class="dl-link" href="${esc(doc.url)}" target="_blank">⬇ Herunterladen</a></div>`
-      : `<div class="doc-empty">Noch kein PDF hochgeladen.</div>`;
-    const upload = isAdmin
-      ? `<label class="btn-primary" style="cursor:pointer">PDF hochladen
-          <input type="file" accept="application/pdf" hidden onchange="uploadSiteDoc('${d.key}',this.files[0])"></label>`
-      : '';
-    return `<div class="doc-card"><div class="doc-head"><h3>${esc(d.label)}</h3>${upload}</div>${viewer}</div>`;
-  }).join('');
+  const sel=$('#infoDocSel');
+  if(sel && !sel.options.length) sel.innerHTML=SITE_DOCS.map(d=>`<option value="${d.key}">${esc(d.label)}</option>`).join('');
+  const key=sel?.value || SITE_DOCS[0].key;
+  const d=SITE_DOCS.find(x=>x.key===key)||SITE_DOCS[0];
+  const doc=cache.docs.find(x=>x.key===key);
+  $('#infoUploadLbl').hidden = !isAdmin;
+  $('#infoDocView').innerHTML = doc?.url
+    ? `<div class="doc-card"><div class="doc-head"><h3>${esc(d.label)}</h3>
+        <a class="dl-link" href="${esc(doc.url)}" target="_blank">⬇ Herunterladen</a></div>
+        <iframe src="${esc(doc.url)}#toolbar=1" title="${esc(d.label)}"></iframe></div>`
+    : `<div class="doc-card"><div class="doc-head"><h3>${esc(d.label)}</h3></div>
+        <div class="doc-empty">Noch kein PDF hochgeladen.</div></div>`;
 }
 async function uploadSiteDoc(key, file){
   if(!file) return;
@@ -1286,6 +1286,8 @@ function bind(){
   $('#logoutBtn').onclick=()=>SB.auth.signOut();
   $('#viewAs').onchange=function(){ setViewAs(this.value); };
   $('#contactSearch').oninput=renderContacts;
+  $('#infoDocSel').onchange=renderInfoTab;
+  $('#infoUploadFile').onchange=function(){ uploadSiteDoc($('#infoDocSel').value, this.files[0]); this.value=''; };
   $$('.grades-cols-btn').forEach(b=>b.onclick=()=>manageGradeCols(b.dataset.fach));
   $$('.tests-cols-btn').forEach(b=>b.onclick=()=>manageTestCols(b.dataset.fach));
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);
