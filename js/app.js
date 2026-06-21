@@ -33,7 +33,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -171,7 +171,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -185,12 +185,13 @@ async function loadAll(){
     SB.from('rooms').select('*').order('name'),
     SB.from('time_slots').select('*').order('sort'),
     SB.from('absences').select('*'),
+    SB.from('test_columns').select('*').order('sort'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
-  cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[];
+  cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[]; cache.testCols=testCols.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -384,9 +385,10 @@ function editPractice(id){
 }
 async function genPracticeWeek(){
   if(!isAdmin) return;
-  const { error } = await SB.rpc('ensure_practice_current');
+  const today=new Date().toISOString().slice(0,10);
+  const { error } = await SB.rpc('ensure_practice_until', { p_end: today });
   if(error){ toast(error.message,'err'); return; }
-  await loadAll(); fillPracticeFilters(); renderPractice(); toast('Wocheneinträge für aktuelle KW erzeugt');
+  await loadAll(); fillPracticeFilters(); renderPractice(); toast('Fehlende Wocheneinträge bis heute erzeugt');
 }
 function createPractice(){
   if(!currentPerson){ toast('Bitte anmelden','err'); return; }
@@ -925,26 +927,29 @@ async function delLesson(id){
 // ---------- BEWERTUNGEN ----------
 function renderBewertung(){
   $$('.grades-cols-btn').forEach(b=>b.hidden=!canEdit('bewertung'));
+  $$('.tests-cols-btn').forEach(b=>b.hidden=!canEdit('tests'));
   const sub=$('#page-bewertung .sub-btn.active')?.dataset.sub||'harmonielehre';
   if(sub==='harmonielehre'){ renderTests('harmonielehre','#hlTests'); renderGrades('harmonielehre','#hlGrades'); }
   else { renderTests('gehoerbildung','#gbTests'); renderGrades('gehoerbildung','#gbGrades'); }
 }
+function testColsFor(fach){
+  const map=new Map();
+  cache.testCols.filter(c=>c.fach===fach).forEach(c=>map.set(c.label,c.sort||0));
+  cache.tests.filter(t=>t.fach===fach&&t.monat).forEach(t=>{ if(!map.has(t.monat)) map.set(t.monat,t.monat_sort||0); });
+  return [...map.entries()].sort((a,b)=>a[1]-b[1]).map(e=>({label:e[0],sort:e[1]}));
+}
 function renderTests(fach, sel){
   const rows=cache.tests.filter(t=>t.fach===fach);
-  const monthMap=[...new Map(rows.map(r=>[r.monat,r.monat_sort??0])).entries()].sort((a,b)=>a[1]-b[1]);
-  const months=monthMap.map(e=>e[0]);
-  if(!months.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Tests.</p>'; return; }
+  const cols=testColsFor(fach);
   const edit=canEdit('tests');
-  const head=`<tr><th class="name">Schüler</th>${months.map(m=>`<th>${esc(m)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
+  if(!cols.length){ $(sel).innerHTML=`<p class="muted" style="padding:14px">${edit?'Noch keine Tests – über „Tests verwalten" anlegen.':'Keine Tests.'}</p>`; return; }
+  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
   const body=visibleStudents().map(p=>{
-    const vals=months.map((m,i)=>{
-      const r=rows.find(x=>x.person_id===p.id&&x.monat===m);
+    const vals=cols.map(c=>{
+      const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
       const v=r?Math.round(r.ergebnis):null;
-      const sort=monthMap[i][1];
-      const txt=(v==null?'–':v+'%');
-      const td = edit
-        ? `<td class="cell-edit" onclick="editTest('${p.id}','${fach}','${esc(m)}',${sort})">${txt}</td>`
-        : `<td>${txt}</td>`;
+      const txt=v==null?'–':v+'%';
+      const td=edit?`<td class="cell-edit" onclick="editTest('${p.id}','${fach}','${esc(c.label)}',${c.sort})">${txt}</td>`:`<td>${txt}</td>`;
       return {v, html:td};
     });
     const known=vals.map(x=>x.v).filter(v=>v!=null);
@@ -975,32 +980,94 @@ async function saveTest(personId, fach, monat, monatSort, value){
 }
 function gradeColsFor(fach){ return cache.gradeCols.filter(c=>c.fach===fach).sort((a,b)=>(a.sort||0)-(b.sort||0)); }
 function gradeVal(g, col){ const v=g?.werte?.[col.id]; return (v==null||v==='')?null:v; }
+function testsAvg(fach, pid){
+  const vs=cache.tests.filter(t=>t.fach===fach&&t.person_id===pid&&t.ergebnis!=null).map(t=>+t.ergebnis);
+  return vs.length?Math.round(vs.reduce((a,b)=>a+b,0)/vs.length):null;
+}
+// IHK-Schlüssel: % -> Note
+function ihkNote(p){ if(p==null)return ''; if(p>=92)return'1'; if(p>=81)return'2'; if(p>=67)return'3'; if(p>=50)return'4'; if(p>=30)return'5'; return'6'; }
+function gesamtPct(g, fach, pid){
+  let ws=0, sum=0;
+  gradeColsFor(fach).filter(c=>(c.typ==='manual'||c.typ==='tests')&&(+c.gewicht||0)>0).forEach(c=>{
+    const v=c.typ==='tests'?testsAvg(fach,pid):gradeVal(g,c);
+    if(v!=null){ const w=+c.gewicht||0; sum+=w*(+v); ws+=w; }
+  });
+  return ws>0?Math.round(sum/ws):null;
+}
+function colValue(g, col, fach, pid){
+  if(col.typ==='tests')  return testsAvg(fach,pid);
+  if(col.typ==='gesamt') return gesamtPct(g,fach,pid);
+  if(col.typ==='note'){ const p=gesamtPct(g,fach,pid); return p==null?null:ihkNote(p); }
+  return gradeVal(g,col);
+}
+function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
+  .map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join(''); }
+// --- Test-Spalten-Verwaltung ---
+function tcAppendRow(){
+  const wrap=document.createElement('div'); wrap.className='gc-row';
+  wrap.innerHTML=`<input class="tc-label" placeholder="z.B. 2026 Juli">
+    <input class="tc-sort" type="number" style="width:70px" placeholder="Sort">
+    <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
+  $('#tcList').appendChild(wrap);
+}
+async function delTestCol(id, fach, label){
+  if(!confirm('Test-Spalte löschen? Die Werte dieser Spalte gehen verloren.')) return;
+  await SB.from('test_columns').delete().eq('id',id);
+  await SB.from('tests').delete().eq('fach',fach).eq('monat',label);
+  cache.testCols=cache.testCols.filter(c=>c.id!==id);
+  cache.tests=cache.tests.filter(t=>!(t.fach===fach&&t.monat===label));
+  document.querySelector(`#tcList .gc-row[data-id="${id}"]`)?.remove();
+  toast('Gelöscht');
+}
+function manageTestCols(fach){
+  const cols=cache.testCols.filter(c=>c.fach===fach).sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const rowsHtml=cols.map(c=>`<div class="gc-row" data-id="${c.id}">
+    <input class="tc-label" value="${esc(c.label)}">
+    <input class="tc-sort" type="number" style="width:70px" value="${c.sort||0}">
+    <button type="button" class="btn-ghost" onclick="delTestCol('${c.id}','${fach}','${esc(c.label)}')">✕</button></div>`).join('');
+  const body=`<div id="tcList">${rowsHtml}</div>
+    <button type="button" class="btn-ghost" onclick="tcAppendRow()">+ Test</button>
+    <p class="muted">Neue 5-Minuten-Tests anlegen. „Sort" bestimmt die Reihenfolge.</p>`;
+  openDialog(`Tests – ${fach==='harmonielehre'?'Harmonielehre':'Gehörbildung'}`, body, async()=>{
+    let sort=0;
+    for(const el of $$('#tcList .gc-row')){
+      const label=$('.tc-label',el)?.value.trim(); if(!label) continue;
+      const s=parseInt($('.tc-sort',el)?.value); sort+=10; const id=el.dataset.id;
+      const sortv=isNaN(s)?sort:s;
+      if(id) await SB.from('test_columns').update({label,sort:sortv}).eq('id',id);
+      else   await SB.from('test_columns').insert({fach,label,sort:sortv});
+    }
+    await loadAll(); renderBewertung(); toast('Tests gespeichert');
+  });
+}
 function renderGrades(fach, sel){
   const cols=gradeColsFor(fach);
   const rows=cache.grades.filter(g=>g.fach===fach);
   const edit=canEdit('bewertung');
   if(!cols.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Spalten definiert.</p>'; return; }
   if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
-  const fmt=(col,v)=> v==null?'–':(col.art==='text'?esc(String(v)):Math.round(v)+'%');
+  const fmt=(col,v)=> v==null?'–':(col.typ==='note'||col.art==='text'?esc(String(v)):Math.round(v)+'%');
   const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}</tr>`;
   const body=visibleStudents().map(p=>{
     const g=rows.find(x=>x.person_id===p.id);
     if(!g && !edit) return '';
     return `<tr class="${edit?'cell-edit':''}" ${edit?`onclick="editGrade('${p.id}','${fach}')"`:''}>
       <td class="name">${esc(fullName(p))}</td>
-      ${cols.map(c=>`<td>${fmt(c, gradeVal(g,c))}</td>`).join('')}</tr>`;
+      ${cols.map(c=>`<td class="${c.typ==='gesamt'?'sum':''}">${fmt(c, colValue(g||{},c,fach,p.id))}</td>`).join('')}</tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
 }
 function editGrade(personId, fach){
-  const cols=gradeColsFor(fach);
+  const cols=gradeColsFor(fach).filter(c=>(c.typ||'manual')==='manual');
   const g=cache.grades.find(x=>x.fach===fach&&x.person_id===personId)||{};
+  const auto=gradeColsFor(fach).filter(c=>c.typ&&c.typ!=='manual')
+    .map(c=>`${esc(c.label)}: <b>${(()=>{const v=colValue(g,c,fach,personId);return v==null?'–':(c.typ==='note'?esc(String(v)):Math.round(v)+'%');})()}</b>`).join(' · ');
   const body=cols.map(c=>{
     const v=gradeVal(g,c);
     return c.art==='text'
       ? `<label>${esc(c.label)}<input id="gc_${c.id}" value="${v==null?'':esc(String(v))}"></label>`
       : `<label>${esc(c.label)} (%)<input id="gc_${c.id}" type="number" min="0" max="100" value="${v==null?'':Math.round(v)}"></label>`;
-  }).join('');
+  }).join('') + (auto?`<p class="muted">Automatisch: ${auto}</p>`:'');
   openDialog(`${fullName(personById(personId))} – Gesamtbewertung`, body, async()=>{
     const werte={...(g.werte||{})};
     cols.forEach(c=>{ const raw=($('#gc_'+c.id).value||'').trim();
@@ -1015,7 +1082,8 @@ function editGrade(personId, fach){
 function gcAppendRow(){
   const wrap=document.createElement('div'); wrap.className='gc-row';
   wrap.innerHTML=`<input class="gc-label" placeholder="Neue Spalte">
-    <select class="gc-art"><option value="zahl">%</option><option value="text">Text</option></select>
+    <select class="gc-typ">${gradeTypOpts('manual')}</select>
+    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="1" title="Gewicht">
     <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
   $('#gcList').appendChild(wrap);
 }
@@ -1031,19 +1099,22 @@ function manageGradeCols(fach){
   const cols=gradeColsFor(fach);
   const rowsHtml=cols.map(c=>`<div class="gc-row" data-id="${c.id}">
     <input class="gc-label" value="${esc(c.label)}">
-    <select class="gc-art"><option value="zahl" ${c.art!=='text'?'selected':''}>%</option><option value="text" ${c.art==='text'?'selected':''}>Text</option></select>
+    <select class="gc-typ">${gradeTypOpts(c.typ||'manual')}</select>
+    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="${c.gewicht??1}" title="Gewicht">
     <button type="button" class="btn-ghost" onclick="delGradeCol('${c.id}')">✕</button>
   </div>`).join('');
   const body=`<div id="gcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="gcAppendRow()">+ Spalte</button>
-    <p class="muted">Reihenfolge = Anzeige (von oben). Mit „Speichern" übernehmen.</p>`;
+    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt für „Gesamt %".</p>`;
   openDialog(`Spalten – ${fach==='harmonielehre'?'Harmonielehre':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#gcList .gc-row')){
       const label=$('.gc-label',el)?.value.trim(); if(!label) continue;
-      const art=$('.gc-art',el)?.value||'zahl'; sort+=10; const id=el.dataset.id;
-      if(id) await SB.from('grade_columns').update({label,art,sort}).eq('id',id);
-      else   await SB.from('grade_columns').insert({fach,label,art,sort});
+      const typ=$('.gc-typ',el)?.value||'manual';
+      const gw=parseNum($('.gc-gew',el)?.value); sort+=10; const id=el.dataset.id;
+      const payload={label, typ, gewicht:(gw==null?1:gw), sort, art:(typ==='note'?'text':'zahl')};
+      if(id) await SB.from('grade_columns').update(payload).eq('id',id);
+      else   await SB.from('grade_columns').insert({fach,...payload});
     }
     await loadAll(); renderBewertung(); toast('Spalten gespeichert');
   });
@@ -1216,6 +1287,7 @@ function bind(){
   $('#viewAs').onchange=function(){ setViewAs(this.value); };
   $('#contactSearch').oninput=renderContacts;
   $$('.grades-cols-btn').forEach(b=>b.onclick=()=>manageGradeCols(b.dataset.fach));
+  $$('.tests-cols-btn').forEach(b=>b.onclick=()=>manageTestCols(b.dataset.fach));
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);
   $('#newMeetingBtn').onclick=()=>{ $('#meetingModal').hidden=false; };
   $('#meetingCancel').onclick=()=>{ $('#meetingModal').hidden=true; };

@@ -98,7 +98,7 @@
           <label>Jahr <select id="ptYear"></select></label>
           <label>KW <select id="ptWeek"></select></label>
           <label>Schüler <select id="ptStudent"></select></label>
-          <button class="btn-ghost" id="ptWeekGenBtn" hidden>Wocheneinträge erzeugen</button>
+          <button class="btn-ghost" id="ptWeekGenBtn" hidden>Fehlende Wochen erzeugen</button>
           <button class="btn-primary" id="ptAddBtn" hidden>+ Eintrag</button>
         </div>
       </div>
@@ -145,7 +145,8 @@
     </div>
     <div class="subpage active" id="sub-harmonielehre">
       <h2 class="section-h">Harmonielehre</h2>
-      <h3 class="section-h sm">5-Minuten-Tests (%)</h3>
+      <div class="toolbar"><h3 class="section-h sm">5-Minuten-Tests (%)</h3>
+        <button class="btn-ghost tests-cols-btn" data-fach="harmonielehre" hidden>Tests verwalten</button></div>
       <div class="table-wrap" id="hlTests"></div>
       <div class="toolbar"><h3 class="section-h sm">Gesamtbewertung</h3>
         <button class="btn-ghost grades-cols-btn" data-fach="harmonielehre" hidden>Spalten bearbeiten</button></div>
@@ -153,7 +154,8 @@
     </div>
     <div class="subpage" id="sub-gehoerbildung">
       <h2 class="section-h">Gehörbildung</h2>
-      <h3 class="section-h sm">5-Minuten-Tests (%)</h3>
+      <div class="toolbar"><h3 class="section-h sm">5-Minuten-Tests (%)</h3>
+        <button class="btn-ghost tests-cols-btn" data-fach="gehoerbildung" hidden>Tests verwalten</button></div>
       <div class="table-wrap" id="gbTests"></div>
       <div class="toolbar"><h3 class="section-h sm">Gesamtbewertung</h3>
         <button class="btn-ghost grades-cols-btn" data-fach="gehoerbildung" hidden>Spalten bearbeiten</button></div>
