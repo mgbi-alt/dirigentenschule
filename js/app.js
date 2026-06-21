@@ -549,10 +549,10 @@ function renderStundenplan(){
   const token=view==='mine'?myToken():null;
   const diffMode = !!(base && planId!==base.id);
   const baseRows = diffMode ? cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===base.id) : [];
-  const baseByKey = new Map(baseRows.map(r=>[lessonKey(r),r]));
+  const baseById = new Map(baseRows.map(r=>[r.id,r]));
   const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
-  const planKeys=new Set(rows.map(lessonKey));
-  const planByKey=new Map(rows.map(r=>[lessonKey(r),r]));
+  const planSourceIds = new Set(rows.map(r=>r.source_id).filter(Boolean));
+  const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
   const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
   const absentSet = absentSetForPlan(planId);
@@ -563,7 +563,7 @@ function renderStundenplan(){
     ? `<div class="tt-meta tt-chg">${prefix}${plainOld?`<s>${esc(plainOld)}</s> `:''}${plainCur?esc(plainCur):'<em>–</em>'}</div>`
     : (htmlVal?`<div class="${cls||'tt-meta'}">${prefix}${htmlVal}</div>`:'');
   const cellHtml=r=>{
-    const baseR = diffMode ? baseByKey.get(lessonKey(r)) : null;
+    const baseR = diffMode ? baseById.get(r.source_id) : null;
     const isNew = diffMode && !baseR;
     const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
     const ch=k=> !!baseR && (c[k]||'')!==(b[k]||'');
@@ -615,13 +615,13 @@ function renderStundenplan(){
       return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div>
         <div class="tt-pause ${edit?'editable':''}" ${edit?`onclick="editLesson('${pr.id}')"`:''}>Pause</div></div>`;
     }
-    // entfallene Grundplan-Stunden in diesem Slot
-    let removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planKeys.has(lessonKey(r))) : [];
+    // entfallene Grundplan-Stunden in diesem Slot (im Treffenplan nicht mehr vorhanden)
+    let removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planSourceIds.has(r.id)) : [];
     if(token){
       slotRows=slotRows.filter(r=>r.fach!=='Pause' && lessonIsMine(r,token));
       // für mich: Stunde komplett weg ODER ich aus bestehender Stunde rausgenommen
       removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && r.fach!=='Pause' && lessonIsMine(r,token) && (()=>{
-          const pk=planByKey.get(lessonKey(r)); return !pk || !lessonIsMine(pk,token);
+          const pr=planBySource.get(r.id); return !pr || !lessonIsMine(pr,token);
         })()) : [];
       if(!slotRows.length && !removed.length)
         return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-free">Freistunde</div></div>`;
@@ -693,7 +693,8 @@ async function createTreffen(name, datum){
   if(error){ toast(error.message,'err'); return null; }
   const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
     zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
-    lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort}));
+    lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort,
+    source_id:r.id}));
   if(copies.length){
     const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
     if(e2){ toast(e2.message,'err'); } else cache.tt.push(...(ins||[]));
