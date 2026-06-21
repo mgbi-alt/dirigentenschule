@@ -479,7 +479,8 @@ function basePlan(){ return cache.plans.find(p=>p.is_base)||cache.plans[0]; }
 function currentPlanId(){ const v=$('#ttPlan')?.value; return v||basePlan()?.id; }
 function fillPlanSelect(){
   const sel=$('#ttPlan'); if(!sel) return; const cur=sel.value;
-  const ordered=[...cache.plans].sort((a,b)=>(b.is_base?1:0)-(a.is_base?1:0) || (a.sort-b.sort));
+  const ordered=[...cache.plans].sort((a,b)=>
+    (a.is_base!==b.is_base) ? (a.is_base?-1:1) : ((a.datum||'').localeCompare(b.datum||'') || (a.sort-b.sort)));
   sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}${p.datum?` (${fmtDate(p.datum)})`:''}</option>`).join('');
   if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
   else { const b=basePlan(); if(b) sel.value=b.id; }
@@ -631,17 +632,18 @@ function renderStundenplan(){
   let banner='';
   if(diffMode) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
   if(edit){
-    const conf=planConflicts(rows);
+    const conf=planConflicts(rows, absentSet);
     if(conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
   }
   $('#ttGrid').innerHTML = banner + (html || '<p class="muted">Dieser Plan ist leer.</p>');
 }
-function planConflicts(planRows){
+function planConflicts(planRows, absentSet){
+  absentSet=absentSet||new Set();
   const out=[], byZeit={};
-  planRows.forEach(r=>{ if(r.fach==='Pause')return; (byZeit[r.zeit]=byZeit[r.zeit]||[]).push(r); });
+  planRows.forEach(r=>{ if(r.fach==='Pause'||lessonCancelled(r,absentSet))return; (byZeit[r.zeit]=byZeit[r.zeit]||[]).push(r); });
   Object.keys(byZeit).forEach(zeit=>{
     const rs=byZeit[zeit], pmap=new Map();
-    const add=(ids,r)=> (ids||[]).forEach(id=>{ if(!pmap.has(id)) pmap.set(id,new Map()); pmap.get(id).set(r.id,r.fach); });
+    const add=(ids,r)=> (ids||[]).forEach(id=>{ if(absentSet.has(id))return; if(!pmap.has(id)) pmap.set(id,new Map()); pmap.get(id).set(r.id,r.fach); });
     rs.forEach(r=>{ add(r.schueler_ids,r); add(r.lehrer_ids,r); add(r.klavier_ids,r); });
     pmap.forEach((lessons,pid)=>{ if(lessons.size>1){ const p=personById(pid);
       out.push(`${zeit}: ${p?fullName(p):'?'} in ${lessons.size} Stunden (${[...lessons.values()].join(', ')})`); }});
