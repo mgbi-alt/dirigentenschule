@@ -57,6 +57,8 @@
       <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
     </div>
     <div id="announcementsList" class="ann-list"></div>
+    <h2 class="section-h">Abmeldungen</h2>
+    <div id="absencesList" class="ann-list"></div>
   </section>
 
   <!-- ========== INFO (Pläne) ========== -->
@@ -158,15 +160,29 @@
 
   <!-- ========== ADMIN ========== -->
   <section class="page" id="page-admin">
-    <div class="toolbar">
-      <h2 class="section-h">Benutzerverwaltung</h2>
-      <div class="filters">
-        <input type="search" id="paSearch" placeholder="Suchen …" class="search-input">
-        <button class="btn-primary" id="paAddBtn">+ Person anlegen</button>
-      </div>
+    <div class="subnav">
+      <button class="sub-btn active" data-sub="personen">Personen</button>
+      <button class="sub-btn" data-sub="treffen">Treffen</button>
     </div>
-    <p class="muted">Liste lesend. Über „Bearbeiten" Rollen, Rechte, Kontaktdaten ändern, deaktivieren oder löschen.</p>
-    <div id="personAdminList" class="person-admin"></div>
+    <div class="subpage active" id="sub-personen">
+      <div class="toolbar">
+        <h2 class="section-h">Benutzerverwaltung</h2>
+        <div class="filters">
+          <input type="search" id="paSearch" placeholder="Suchen …" class="search-input">
+          <button class="btn-primary" id="paAddBtn">+ Person anlegen</button>
+        </div>
+      </div>
+      <p class="muted">Liste lesend. Über „Bearbeiten" Rollen, Rechte, Kontaktdaten ändern, deaktivieren oder löschen.</p>
+      <div id="personAdminList" class="person-admin"></div>
+    </div>
+    <div class="subpage" id="sub-treffen">
+      <div class="toolbar">
+        <h2 class="section-h">Treffen</h2>
+        <button class="btn-primary" id="trAddBtn">+ Treffen</button>
+      </div>
+      <p class="muted">Ein Treffen legt einen Vertretungsplan (Kopie des Grundplans) an. Abmeldungen je Treffen verwalten – sie wirken automatisch im Stundenplan.</p>
+      <div id="treffenList" class="person-admin"></div>
+    </div>
   </section>
 
 </main>
@@ -203,6 +219,10 @@
   <div class="modal-box wide">
     <h3 id="annModalTitle">Info</h3>
     <input type="text" id="annT" placeholder="Titel">
+    <label class="ann-treffen">Treffen (optional):
+      <select id="annTreffen"></select>
+      <button type="button" class="btn-ghost mini" id="annNewTreffen">+ neues Treffen</button>
+    </label>
     <div class="rte-toolbar">
       <select id="rteFont" title="Schriftart">
         <option value="">Schrift</option>

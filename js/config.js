@@ -36,6 +36,9 @@ const FACH_ORDER = ['Musiktheorie','Arrangieren','Dirigieren','Stimmbildung','Kl
 // Fächer, denen Personen zugeordnet werden können (für die Stundenplan-Auswahl)
 const ASSIGN_SUBJECTS = ['Dirigieren','Stimmbildung','Klavier','Gehörbildung','Musiktheorie','Arrangieren','Klavierbegleitung'];
 
+// Einzelunterricht (hier wirkt eine Schüler-Abmeldung als Entfall)
+const INDIVIDUAL_FAECHER = ['Dirigieren','Stimmbildung','Klavier','Gehörbildung'];
+
 // Rollen (Mehrfach-Zuordnung möglich). Reihenfolge = Sortierung in Kontakten.
 const ROLES = [
   { key: 'admin',          label: 'Admin' },

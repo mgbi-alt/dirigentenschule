@@ -33,7 +33,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -155,7 +155,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('datum'),
@@ -168,12 +168,13 @@ async function loadAll(){
     SB.from('grade_columns').select('*').order('sort'),
     SB.from('rooms').select('*').order('name'),
     SB.from('time_slots').select('*').order('sort'),
+    SB.from('absences').select('*'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
-  cache.timeSlots=timeSlots.data||[];
+  cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[];
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -192,6 +193,19 @@ function renderActivePage(){
 
 // ---------- START ----------
 function renderStart(){
+  // Abmeldungen je Treffen
+  const treffen=cache.plans.filter(p=>!p.is_base)
+    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  const absBlocks=treffen.map(t=>{
+    const list=absencesForPlan(t.id); if(!list.length) return '';
+    const items=list.map(a=>{ const p=personById(a.person_id);
+      const rolle=p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung'))?'Lehrer':(p&&hasRole(p,'admin')?'Admin':'Schüler');
+      return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; }).join('');
+    return `<div class="ann-item"><h4>${esc(t.name)} ${t.datum?`<span class="date">${fmtDate(t.datum)}</span>`:''}</h4>
+      <ul class="abs-ul">${items}</ul></div>`;
+  }).filter(Boolean).join('');
+  $('#absencesList').innerHTML = absBlocks || '<p class="muted">Keine Abmeldungen.</p>';
+
   const canInfo=canEdit('infos');
   $('#announcementsList').innerHTML = cache.ann.length
     ? cache.ann.map(a=>`<div class="ann-item"><span class="date">${fmtDate(a.datum)}</span>
@@ -502,6 +516,20 @@ function lessonIsMine(r, token){
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
 function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
+function absentSetForPlan(planId){ return new Set(cache.absences.filter(a=>a.plan_id===planId).map(a=>a.person_id)); }
+function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===planId); }
+function lessonCancelled(r, absentSet){
+  if(r.entfaellt) return true;
+  if(!INDIVIDUAL_FAECHER.includes(r.fach)) return false;
+  const sids=r.schueler_ids||[];
+  return sids.length>0 && sids.every(id=>absentSet.has(id));
+}
+function tokensHtml(ids, freetext, absentSet, absCls){
+  const parts=(ids||[]).map(id=>{ const p=personById(id); if(!p) return null;
+    const tk=esc(personToken(p));
+    return absentSet&&absentSet.has(id)?`<span class="${absCls}">${tk}</span>`:tk; }).filter(Boolean);
+  return parts.length?parts.join(', '):(freetext?esc(freetext):'');
+}
 function lessonFields(r){
   return { ueber:r.ueberschrift||'', stu:schuelerDisplay(r), leh:lehrerDisplay(r), kla:klavierDisplay(r), raum:r.raum||'' };
 }
@@ -520,25 +548,33 @@ function renderStundenplan(){
   const planByKey=new Map(rows.map(r=>[lessonKey(r),r]));
   const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
+  const absentSet = absentSetForPlan(planId);
   const line=(prefix,cur,old,changed,cls)=> changed
     ? `<div class="tt-meta tt-chg">${prefix}${old?`<s>${esc(old)}</s> `:''}${cur?esc(cur):'<em>–</em>'}</div>`
     : (cur?`<div class="${cls||'tt-meta'}">${prefix}${esc(cur)}</div>`:'');
+  const lineH=(prefix,htmlVal,plainCur,plainOld,changed,cls)=> changed
+    ? `<div class="tt-meta tt-chg">${prefix}${plainOld?`<s>${esc(plainOld)}</s> `:''}${plainCur?esc(plainCur):'<em>–</em>'}</div>`
+    : (htmlVal?`<div class="${cls||'tt-meta'}">${prefix}${htmlVal}</div>`:'');
   const cellHtml=r=>{
     const baseR = diffMode ? baseByKey.get(lessonKey(r)) : null;
     const isNew = diffMode && !baseR;
     const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
     const ch=k=> !!baseR && (c[k]||'')!==(b[k]||'');
+    const cancelled=lessonCancelled(r, absentSet);
+    const stuR=tokensHtml(r.schueler_ids, r.schueler, absentSet, 'tt-absent');
+    const lehR=tokensHtml(r.lehrer_ids, r.lehrer, absentSet, 'tt-absent-t');
+    const klaR=tokensHtml(r.klavier_ids, r.klavier, absentSet, 'tt-absent-t');
     const lines=[];
     if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
-    if(c.stu||ch('stu'))     lines.push(line('', c.stu, b.stu, ch('stu'), 'tt-stu'));
-    if(c.leh||ch('leh'))     lines.push(line('L: ', c.leh, b.leh, ch('leh')));
-    if(c.kla||ch('kla'))     lines.push(line('K: ', c.kla, b.kla, ch('kla')));
+    if(stuR||ch('stu'))      lines.push(lineH('', stuR, c.stu, b.stu, ch('stu'), 'tt-stu'));
+    if(lehR||ch('leh'))      lines.push(lineH('L: ', lehR, c.leh, b.leh, ch('leh')));
+    if(klaR||ch('kla'))      lines.push(lineH('K: ', klaR, c.kla, b.kla, ch('kla')));
     if(c.raum||ch('raum'))   lines.push(line('R: ', c.raum, b.raum, ch('raum'), 'tt-room'));
     const pad=c.ueber?5:4; while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
     const changed = isNew || (baseR && ['ueber','stu','leh','kla','raum'].some(ch));
-    const cls = isNew?'tt-new':(changed?'tt-changed':'');
-    const badge = isNew?'<span class="tt-badge">neu</span>':'';
-    return `<div class="tt-cell ${cls} ${edit?'editable':''}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
+    const cls = [cancelled?'tt-cancelled':'', isNew?'tt-new':(changed?'tt-changed':''), edit?'editable':''].filter(Boolean).join(' ');
+    const badge = cancelled?'<span class="tt-badge">entfällt</span>':(isNew?'<span class="tt-badge">neu</span>':'');
+    return `<div class="tt-cell ${cls}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
   };
   const removedCell=r=>{
     const c=lessonFields(r);
@@ -642,26 +678,107 @@ function manageTimeSlots(){
     await loadAll(); renderStundenplan(); toast('Zeiten gespeichert');
   });
 }
-async function copyPlan(){
-  const base=basePlan(); if(!base){ toast('Kein Grundplan vorhanden','err'); return; }
-  const body=`<label>Name<input id="cp_name" placeholder="z.B. Treffen 14.06.2026"></label>
+async function createTreffen(name, datum){
+  const base=basePlan(); if(!base){ toast('Kein Grundplan vorhanden','err'); return null; }
+  const {data:plan,error}=await SB.from('plans')
+    .insert({name, datum:datum||null, is_base:false, sort:(Math.max(0,...cache.plans.map(p=>p.sort||0))+1)})
+    .select().single();
+  if(error){ toast(error.message,'err'); return null; }
+  const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
+    zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
+    lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort}));
+  if(copies.length){
+    const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
+    if(e2){ toast(e2.message,'err'); } else cache.tt.push(...(ins||[]));
+  }
+  cache.plans.push(plan); return plan;
+}
+function copyPlan(){
+  openDialog('Neuen Plan anlegen (Kopie Grundplan)', `<label>Name<input id="cp_name" placeholder="z.B. Treffen 14.06.2026"></label>
     <label>Datum<input type="date" id="cp_datum"></label>
-    <p class="muted">Erstellt eine Kopie des Grundplans, die du anpassen kannst (Vertretung/Ausfall).</p>`;
-  openDialog('Neuen Plan anlegen (Kopie Grundplan)', body, async()=>{
+    <p class="muted">Erstellt eine Kopie des Grundplans, die du anpassen kannst (Vertretung/Ausfall).</p>`, async()=>{
     const name=$('#cp_name').value.trim(); if(!name){ toast('Name fehlt','err'); return false; }
-    const {data:plan,error}=await SB.from('plans')
-      .insert({name, datum:$('#cp_datum').value||null, is_base:false, sort:(Math.max(0,...cache.plans.map(p=>p.sort||0))+1)})
-      .select().single();
-    if(error){ toast(error.message,'err'); return false; }
-    const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
-      zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
-      lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort}));
-    if(copies.length){
-      const {data:ins,error:e2}=await SB.from('timetable').insert(copies).select();
-      if(e2){ toast(e2.message,'err'); return false; } cache.tt.push(...(ins||[]));
-    }
-    cache.plans.push(plan); fillPlanSelect(); $('#ttPlan').value=plan.id; renderStundenplan(); toast('Plan angelegt');
+    const plan=await createTreffen(name, $('#cp_datum').value); if(!plan) return false;
+    fillPlanSelect(); $('#ttPlan').value=plan.id; renderStundenplan(); toast('Plan angelegt');
   });
+}
+function renderTreffen(){
+  const list=cache.plans.filter(p=>!p.is_base)
+    .sort((a,b)=>(b.datum||'').localeCompare(a.datum||'') || (a.name||'').localeCompare(b.name||''));
+  $('#treffenList').innerHTML = list.map(p=>{
+    const nAbs=cache.absences.filter(a=>a.plan_id===p.id).length;
+    return `<div class="person-item">
+      <span class="pi-name">${esc(p.name)}</span>
+      <span class="muted">${p.datum?fmtDate(p.datum):'—'}</span>
+      <span class="muted">${nAbs} Abmeldung(en)</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-ghost" onclick="manageAbsences('${p.id}')">Abmeldungen</button>
+        <button class="btn-ghost" onclick="editTreffen('${p.id}')">Bearbeiten</button>
+        <button class="btn-ghost" style="color:#e88" onclick="delTreffen('${p.id}')">Löschen</button>
+      </span></div>`;
+  }).join('') || '<p class="muted">Noch keine Treffen.</p>';
+}
+function addTreffen(){
+  openDialog('Neues Treffen', `<label>Name<input id="tr_name" placeholder="z.B. Treffen 12.07.2026"></label>
+    <label>Datum<input type="date" id="tr_datum"></label>
+    <p class="muted">Legt einen Vertretungsplan als Kopie des Grundplans an.</p>`, async()=>{
+    const datum=$('#tr_datum').value;
+    const name=$('#tr_name').value.trim()||(datum?`Treffen ${fmtDate(datum)}`:''); if(!name){ toast('Name oder Datum fehlt','err'); return false; }
+    const plan=await createTreffen(name, datum); if(!plan) return false;
+    renderAdmin(); fillPlanSelect(); toast('Treffen angelegt');
+  });
+}
+function editTreffen(id){
+  const p=cache.plans.find(x=>x.id===id); if(!p) return;
+  openDialog('Treffen bearbeiten', `<label>Name<input id="tr_name" value="${esc(p.name)}"></label>
+    <label>Datum<input type="date" id="tr_datum" value="${p.datum||''}"></label>`, async()=>{
+    const name=$('#tr_name').value.trim(); if(!name){ toast('Name fehlt','err'); return false; }
+    const datum=$('#tr_datum').value||null;
+    const {error}=await SB.from('plans').update({name,datum}).eq('id',id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(p,{name,datum}); renderAdmin(); fillPlanSelect(); toast('Gespeichert');
+  });
+}
+async function delTreffen(id){
+  if(!confirm('Treffen samt Vertretungsplan und Abmeldungen löschen?')) return;
+  const {error}=await SB.from('plans').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.plans=cache.plans.filter(p=>p.id!==id);
+  cache.tt=cache.tt.filter(r=>r.plan_id!==id);
+  cache.absences=cache.absences.filter(a=>a.plan_id!==id);
+  renderAdmin(); fillPlanSelect(); toast('Gelöscht');
+}
+function manageAbsences(planId){
+  const plan=cache.plans.find(p=>p.id===planId);
+  const list=absencesForPlan(planId);
+  const rows=list.map(a=>{ const p=personById(a.person_id);
+    return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${a.grund?` – ${esc(a.grund)}`:''}</span>
+      <button type="button" class="btn-ghost" onclick="delAbsence('${a.id}','${planId}')">✕</button></div>`; }).join('');
+  const peopleOpts=cache.people.filter(p=>p.aktiv).sort(byName)
+    .map(p=>`<option value="${p.id}">${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`).join('');
+  const body=`<div id="absList">${rows||'<p class="muted">Keine Abmeldungen.</p>'}</div>
+    <div class="gc-row" style="margin-top:8px">
+      <select id="absPerson" style="flex:1">${peopleOpts}</select>
+      <input id="absGrund" placeholder="Grund" style="width:120px">
+      <button type="button" class="btn-primary" onclick="addAbsence('${planId}')">+</button>
+    </div>`;
+  openDialog(`Abmeldungen – ${esc(plan?plan.name:'')}`, body, ()=>{});
+}
+async function addAbsence(planId){
+  const pid=$('#absPerson').value; if(!pid) return;
+  const grund=$('#absGrund').value.trim();
+  const {data,error}=await SB.from('absences').upsert({plan_id:planId,person_id:pid,grund:grund||null},{onConflict:'plan_id,person_id'}).select().single();
+  if(error){ toast(error.message,'err'); return; }
+  const i=cache.absences.findIndex(a=>a.plan_id===planId&&a.person_id===pid);
+  if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
+  manageAbsences(planId); renderAdmin();
+}
+async function delAbsence(id, planId){
+  const {error}=await SB.from('absences').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.absences=cache.absences.filter(a=>a.id!==id);
+  document.querySelector(`#absList .gc-row[data-id="${id}"]`)?.remove();
+  renderAdmin();
 }
 const allActive=()=>cache.people.filter(p=>p.aktiv);
 function lessonForm(r){
@@ -689,7 +806,8 @@ function lessonForm(r){
       <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_kbids')">Auswahl leeren</button></label>
     <label>Klavierbegleitung-Freitext (optional)<input id="tl_kla" value="${esc(r.klavier||'')}" placeholder="falls nicht in der Liste"></label>
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
-      <datalist id="roomsDatalist">${roomOpts}</datalist></label>`;
+      <datalist id="roomsDatalist">${roomOpts}</datalist></label>
+    <label class="chk"><input type="checkbox" id="tl_entf" ${r.entfaellt?'checked':''}> Stunde entfällt</label>`;
 }
 function clearMulti(id){ const el=$('#'+id); if(el) [...el.options].forEach(o=>o.selected=false); }
 function refreshLessonPools(){
@@ -711,7 +829,8 @@ function readLessonForm(){
     lehrer:$('#tl_leh').value.trim()||null,
     klavier_ids: kids.length?kids:null,
     klavier:$('#tl_kla').value.trim()||null,
-    raum:$('#tl_raum').value.trim()||null };
+    raum:$('#tl_raum').value.trim()||null,
+    entfaellt:$('#tl_entf').checked };
 }
 async function ensureRoom(name){
   if(!name || cache.rooms.some(r=>r.name===name)) return;
@@ -881,6 +1000,7 @@ function manageGradeCols(fach){
 // ---------- ADMIN ----------
 function renderAdmin(){
   renderPersonAdmin();
+  renderTreffen();
 }
 function renderPersonAdmin(){
   const q=($('#paSearch')?.value||'').toLowerCase();
@@ -964,12 +1084,25 @@ let _annEditId=null, _savedRange=null;
 function saveSel(){ const s=window.getSelection(); if(s.rangeCount && $('#annEditor').contains(s.anchorNode)) _savedRange=s.getRangeAt(0); }
 function restoreSel(){ const ed=$('#annEditor'); ed.focus(); if(_savedRange){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(_savedRange); } }
 function rteCmd(cmd,val){ restoreSel(); document.execCommand(cmd,false,val||null); saveSel(); }
+function fillAnnTreffen(selId){
+  const opts=['<option value="">(kein Treffen)</option>']
+    .concat(cache.plans.filter(p=>!p.is_base).sort((a,b)=>(b.datum||'').localeCompare(a.datum||''))
+      .map(p=>`<option value="${p.id}" ${p.id===selId?'selected':''}>${esc(p.name)}${p.datum?' · '+fmtDate(p.datum):''}</option>`));
+  $('#annTreffen').innerHTML=opts.join('');
+}
+async function annNewTreffen(){
+  const datum=prompt('Datum des Treffens (JJJJ-MM-TT)?'); if(datum===null) return;
+  const name=prompt('Name des Treffens?', datum?`Treffen ${datum}`:'')||''; if(!name.trim()) return;
+  const plan=await createTreffen(name.trim(), datum||null); if(!plan) return;
+  fillAnnTreffen(plan.id); toast('Treffen angelegt');
+}
 function openAnnEditor(id){
   _annEditId=id||null; _savedRange=null;
   const a=id?cache.ann.find(x=>x.id===id):null;
   $('#annModalTitle').textContent = id?'Info bearbeiten':'Neue Info';
   $('#annT').value = a?(a.titel||''):'';
   $('#annEditor').innerHTML = a?(a.text||''):'';
+  fillAnnTreffen(a?a.plan_id:'');
   $('#annErr').textContent='';
   $('#annModal').hidden=false;
 }
@@ -978,9 +1111,10 @@ async function saveAnn(){
   const titel=$('#annT').value.trim();
   if(!titel){ $('#annErr').textContent='Titel fehlt'; return; }
   const text=$('#annEditor').innerHTML;
+  const plan_id=$('#annTreffen').value||null;
   const res = _annEditId
-    ? await SB.from('announcements').update({titel,text}).eq('id',_annEditId)
-    : await SB.from('announcements').insert({titel,text});
+    ? await SB.from('announcements').update({titel,text,plan_id}).eq('id',_annEditId)
+    : await SB.from('announcements').insert({titel,text,plan_id});
   if(res.error){ $('#annErr').textContent=res.error.message; return; }
   closeAnnEditor(); await loadAll(); renderStart(); toast('Gespeichert');
 }
@@ -1036,6 +1170,7 @@ function bind(){
   $('#meetingSave').onclick=saveMeeting;
   $('#paSearch').oninput=renderPersonAdmin;
   $('#paAddBtn').onclick=addPersonDialog;
+  $('#trAddBtn').onclick=addTreffen;
   $('#ptAddBtn').onclick=createPractice;
   $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
@@ -1052,6 +1187,7 @@ function bind(){
   $('#annNewBtn').onclick=()=>openAnnEditor();
   $('#annCancel').onclick=closeAnnEditor;
   $('#annSave').onclick=saveAnn;
+  $('#annNewTreffen').onclick=annNewTreffen;
   const ed=$('#annEditor');
   ['keyup','mouseup','focus'].forEach(ev=>ed.addEventListener(ev,saveSel));
   $$('.rte-toolbar [data-cmd]').forEach(b=>{

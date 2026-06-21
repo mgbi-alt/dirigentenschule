@@ -78,6 +78,10 @@ em{color:var(--text2);font-style:normal}
   border-radius:var(--r);padding:12px 16px}
 .ann-item h4{margin:0 0 4px}.ann-item .date{color:var(--text3);font-size:12px}
 .ann-item p{margin:6px 0 0;color:var(--text2)}
+.abs-ul{margin:6px 0 0;padding-left:18px;color:var(--text2);font-size:14px}
+.abs-ul li{margin:2px 0}
+.ann-treffen{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin:6px 0}
+.ann-treffen select{flex:1}
 
 /* ---- Tables ---- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r2);background:var(--card)}
@@ -245,6 +249,12 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-leg-chg{border-left:3px solid var(--accent)}
 .tt-leg-new{border-left:3px solid var(--green)}
 .tt-leg-rem{border-left:3px solid var(--err);text-decoration:line-through}
+/* Entfall in Place + Abwesenheiten */
+.tt-cell.tt-cancelled{opacity:.55;border-left:3px solid var(--err)}
+.tt-cell.tt-cancelled .tt-head,.tt-cell.tt-cancelled .tt-stu,
+.tt-cell.tt-cancelled .tt-meta,.tt-cell.tt-cancelled .tt-room{text-decoration:line-through}
+.tt-absent{text-decoration:line-through;color:var(--text3)}
+.tt-absent-t{color:#ff6b6b;font-weight:700}
 .tt-conflicts{background:var(--red-bg);border:1px solid var(--err);border-radius:var(--r);padding:8px 14px;margin-bottom:12px;font-size:13px}
 .tt-conflicts ul{margin:6px 0 0;padding-left:18px}
 .tt-conflicts li{color:var(--text)}
