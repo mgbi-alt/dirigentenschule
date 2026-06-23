@@ -862,6 +862,12 @@ async function delAbsence(id, planId){
   renderAdmin();
 }
 const allActive=()=>cache.people.filter(p=>p.aktiv);
+function peopleSelectOpts(pool, selectedIds){
+  const sel=new Set(selectedIds||[]);
+  return peopleSelectHtml(pool, selectedIds)
+    + `<option value="__other__" ${sel.has('__other__')?'selected':''}>— Sonstige (Freitext) —</option>`;
+}
+const withOther=(ids,free)=>{ const a=ids?[...ids]:[]; if((free||'').trim()) a.push('__other__'); return a; };
 function lessonForm(r){
   r=r||{};
   const fach=r.fach||'Dirigieren';
@@ -875,41 +881,55 @@ function lessonForm(r){
     <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler (Mehrfachauswahl mit Strg/⌘)
-      <select id="tl_stuids" multiple size="5">${peopleSelectHtml(students().slice().sort(byName), r.schueler_ids)}</select>
-      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_stuids')">Auswahl leeren</button></label>
-    <label>Schüler-Freitext (optional)<input id="tl_stu" value="${esc(r.schueler||'')}" placeholder="falls nicht in der Liste"></label>
+      <select id="tl_stuids" multiple size="5" onchange="updateLessonDialogVis()">${peopleSelectOpts(students().slice().sort(byName), withOther(r.schueler_ids,r.schueler))}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_stuids');updateLessonDialogVis()">Auswahl leeren</button></label>
+    <label id="wrapStuFree" style="display:none">Schüler-Freitext<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
     <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
-      <select id="tl_lehids" multiple size="5">${peopleSelectHtml(peopleForSubject(fach,teacherPeople), r.lehrer_ids)}</select>
-      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_lehids')">Auswahl leeren</button></label>
-    <label>Lehrer-Kürzel/Freitext (optional)<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
-    <label>Klavierbegleitung (Mehrfachauswahl)
-      <select id="tl_kbids" multiple size="4">${peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), r.klavier_ids)}</select>
-      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_kbids')">Auswahl leeren</button></label>
-    <label>Klavierbegleitung-Freitext (optional)<input id="tl_kla" value="${esc(r.klavier||'')}" placeholder="falls nicht in der Liste"></label>
+      <select id="tl_lehids" multiple size="5" onchange="updateLessonDialogVis()">${peopleSelectOpts(peopleForSubject(fach,teacherPeople), withOther(r.lehrer_ids,r.lehrer))}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_lehids');updateLessonDialogVis()">Auswahl leeren</button></label>
+    <label id="wrapLehFree" style="display:none">Lehrer-Freitext<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
+    <label id="wrapKb">Klavierbegleitung (Mehrfachauswahl)
+      <select id="tl_kbids" multiple size="4" onchange="updateLessonDialogVis()">${peopleSelectOpts(peopleForSubject('Klavierbegleitung',allActive), withOther(r.klavier_ids,r.klavier))}</select>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_kbids');updateLessonDialogVis()">Auswahl leeren</button></label>
+    <label id="wrapKlaFree" style="display:none">Klavierbegleitung-Freitext<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
       <datalist id="roomsDatalist">${roomOpts}</datalist></label>
     <label class="chk"><input type="checkbox" id="tl_entf" ${r.entfaellt?'checked':''}> Stunde entfällt</label>`;
 }
 function clearMulti(id){ const el=$('#'+id); if(el) [...el.options].forEach(o=>o.selected=false); }
+function updateLessonDialogVis(){
+  if(!$('#tl_fach')) return;
+  const fach=$('#tl_fach').value;
+  const hasOther=id=>{ const el=$('#'+id); return !!el && [...el.selectedOptions].some(o=>o.value==='__other__'); };
+  const show=(id,c)=>{ const w=$('#'+id); if(w) w.style.display=c?'':'none'; };
+  show('wrapStuFree', hasOther('tl_stuids'));
+  show('wrapLehFree', hasOther('tl_lehids'));
+  const kb=!['Klavier','Gehörbildung'].includes(fach);
+  show('wrapKb', kb);
+  show('wrapKlaFree', kb && hasOther('tl_kbids'));
+}
 function refreshLessonPools(){
   const fach=$('#tl_fach').value;
   const selL=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
   const selK=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
-  $('#tl_lehids').innerHTML=peopleSelectHtml(peopleForSubject(fach,teacherPeople), selL);
-  $('#tl_kbids').innerHTML=peopleSelectHtml(peopleForSubject('Klavierbegleitung',allActive), selK);
+  $('#tl_lehids').innerHTML=peopleSelectOpts(peopleForSubject(fach,teacherPeople), selL);
+  $('#tl_kbids').innerHTML=peopleSelectOpts(peopleForSubject('Klavierbegleitung',allActive), selK);
+  updateLessonDialogVis();
 }
 function readLessonForm(){
-  const ids=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
-  const kids=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
-  const sids=[...$('#tl_stuids').selectedOptions].map(o=>o.value);
-  return { zeit:$('#tl_zeit').value.trim(), fach:$('#tl_fach').value,
+  const fach=$('#tl_fach').value;
+  const kbHidden=['Klavier','Gehörbildung'].includes(fach);
+  const raw=id=>[...$('#'+id).selectedOptions].map(o=>o.value);
+  const rawStu=raw('tl_stuids'), rawLeh=raw('tl_lehids'), rawKb=raw('tl_kbids');
+  const sids=rawStu.filter(v=>v!=='__other__'), ids=rawLeh.filter(v=>v!=='__other__'), kids=rawKb.filter(v=>v!=='__other__');
+  return { zeit:$('#tl_zeit').value.trim(), fach,
     ueberschrift:$('#tl_head').value.trim()||null,
-    schueler:$('#tl_stu').value.trim()||null,
+    schueler: rawStu.includes('__other__') ? ($('#tl_stu').value.trim()||null) : null,
     schueler_ids: sids.length?sids:null,
     lehrer_ids: ids.length?ids:null,
-    lehrer:$('#tl_leh').value.trim()||null,
-    klavier_ids: kids.length?kids:null,
-    klavier:$('#tl_kla').value.trim()||null,
+    lehrer: rawLeh.includes('__other__') ? ($('#tl_leh').value.trim()||null) : null,
+    klavier_ids: kbHidden?null:(kids.length?kids:null),
+    klavier: (kbHidden||!rawKb.includes('__other__')) ? null : ($('#tl_kla').value.trim()||null),
     raum:$('#tl_raum').value.trim()||null,
     entfaellt:$('#tl_entf').checked };
 }
@@ -932,6 +952,7 @@ function editLesson(id){
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(r,upd); renderStundenplan(); toast('Gespeichert');
   });
+  updateLessonDialogVis();
 }
 function addLesson(){
   const planId=currentPlanId();
@@ -943,6 +964,7 @@ function addLesson(){
     if(error){ toast(error.message,'err'); return false; }
     cache.tt.push(data); renderStundenplan(); toast('Gespeichert');
   });
+  updateLessonDialogVis();
 }
 async function delLesson(id){
   if(!confirm('Diesen Eintrag löschen?')) return;
