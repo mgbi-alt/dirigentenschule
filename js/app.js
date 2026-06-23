@@ -232,21 +232,36 @@ function renderStart(){
   const units=[];
   cache.plans.filter(p=>!p.is_base).forEach(t=>{
     const infos=cache.ann.filter(a=>a.plan_id===t.id);
+    const title=(infos[0]&&infos[0].titel)||defaultInfoTitle(t)||t.name||'Treffen';
     const body=infos.length ? infos.map(infoHtml).join('<hr class="ann-sep">')
-      : `<div class="ann-block"><h4>${esc(t.name)} ${t.datum?`<span class="date">${fmtDate(t.datum)}</span>`:''}</h4>
-         <div class="ann-body muted">noch keine Infos</div></div>`;
-    units.push({ date:t.datum||'', past:!!(t.datum && t.datum<today), body, abs:absencesForPlan(t.id) });
+      : `<div class="ann-block"><h4>${esc(title)}</h4><div class="ann-body muted">noch keine Infos</div></div>`;
+    units.push({ kind:'treffen', plan:t, date:t.datum||'', title, body, abs:absencesForPlan(t.id) });
   });
-  cache.ann.filter(a=>!a.plan_id).forEach(a=>units.push({ date:a.datum||'', past:false, body:infoHtml(a), abs:[] }));
+  cache.ann.filter(a=>!a.plan_id).forEach(a=>units.push({ kind:'info', date:a.datum||'', title:a.titel||'Info', body:infoHtml(a), abs:[] }));
 
   const unitHtml=u=>`<div class="ann-item">${u.body}
     ${u.abs.length?`<div class="ann-abs"><b>Abmeldungen:</b><ul class="abs-ul">${u.abs.map(absLi).join('')}</ul></div>`:''}</div>`;
   const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
-  const current=units.filter(u=>!u.past).sort(byDate);
-  const past=units.filter(u=>u.past).sort(byDate);
-  let html=current.length?current.map(unitHtml).join(''):'<p class="muted">Noch keine Infos.</p>';
-  if(past.length) html+=`<details class="past-termine"><summary>Vergangene Termine (${past.length})</summary>${past.map(unitHtml).join('')}</details>`;
+  // aktuelles Treffen = nächstes anstehendes; nur dieses wird oben gezeigt
+  const upcoming=units.filter(u=>u.kind==='treffen' && u.date && u.date>=today).sort((a,b)=>a.date.localeCompare(b.date));
+  const activeId=upcoming.length?upcoming[0].plan.id:null;
+  const top=units.filter(u=>u.kind==='info' || (u.plan&&u.plan.id===activeId)).sort(byDate);
+  const below=units.filter(u=>u.kind==='treffen' && (!activeId || u.plan.id!==activeId)).sort(byDate);
+  let html=top.length?top.map(unitHtml).join(''):'<p class="muted">Noch keine Infos.</p>';
+  html+=below.map(u=>`<details class="past-termine"><summary>${esc(u.title)}${u.date?` · ${fmtDate(u.date)}`:''}</summary>${unitHtml(u)}</details>`).join('');
   $('#announcementsList').innerHTML = html;
+}
+// Default-Titel: "<Nr> Dirigentenkurs am <Vortag>.-<Tag>.<Monat>.<Jahr>"
+function defaultInfoTitle(plan){
+  if(!plan) return '';
+  const num=(plan.name||'').trim();
+  if(!plan.datum) return (num?num+' ':'')+'Dirigentenkurs';
+  const d=new Date(plan.datum+'T00:00:00'); const d0=new Date(d); d0.setDate(d.getDate()-1);
+  const full=x=>`${x.getDate()}.${x.getMonth()+1}.${x.getFullYear()}`;
+  const range=(d0.getMonth()===d.getMonth()&&d0.getFullYear()===d.getFullYear())
+    ? `${d0.getDate()}.-${full(d)}`
+    : `${d0.getDate()}.${d0.getMonth()+1}.-${full(d)}`;
+  return `${num?num+' ':''}Dirigentenkurs am ${range}`;
 }
 
 // ---------- HAUSAUFGABEN ----------
@@ -1229,7 +1244,11 @@ async function annNewTreffen(){
   const datum=prompt('Datum des Treffens (JJJJ-MM-TT)?'); if(datum===null) return;
   const name=prompt('Name des Treffens?', datum?`Treffen ${datum}`:'')||''; if(!name.trim()) return;
   const plan=await createTreffen(name.trim(), datum||null); if(!plan) return;
-  fillAnnTreffen(plan.id); toast('Treffen angelegt');
+  fillAnnTreffen(plan.id); annTreffenChanged(); toast('Treffen angelegt');
+}
+function annTreffenChanged(){
+  const plan=cache.plans.find(p=>p.id===$('#annTreffen').value);
+  if(plan && !$('#annT').value.trim()) $('#annT').value=defaultInfoTitle(plan);
 }
 function openAnnEditor(id){
   _annEditId=id||null; _savedRange=null;
@@ -1237,7 +1256,8 @@ function openAnnEditor(id){
   $('#annModalTitle').textContent = id?'Info bearbeiten':'Neue Info';
   $('#annT').value = a?(a.titel||''):'';
   $('#annEditor').innerHTML = a?(a.text||''):'';
-  fillAnnTreffen(a?a.plan_id:'');
+  if(a){ fillAnnTreffen(a.plan_id||''); }
+  else { const t=currentTreffen(); fillAnnTreffen(t?t.id:''); annTreffenChanged(); }
   $('#annErr').textContent='';
   $('#annModal').hidden=false;
 }
@@ -1327,6 +1347,7 @@ function bind(){
   $('#annCancel').onclick=closeAnnEditor;
   $('#annSave').onclick=saveAnn;
   $('#annNewTreffen').onclick=annNewTreffen;
+  $('#annTreffen').onchange=annTreffenChanged;
   const ed=$('#annEditor');
   ['keyup','mouseup','focus'].forEach(ev=>ed.addEventListener(ev,saveSel));
   $$('.rte-toolbar [data-cmd]').forEach(b=>{
