@@ -235,7 +235,7 @@ function renderStart(){
     const title=(infos[0]&&infos[0].titel)||defaultInfoTitle(t)||t.name||'Treffen';
     const body=infos.length ? infos.map(infoHtml).join('<hr class="ann-sep">')
       : `<div class="ann-block"><h4>${esc(title)}</h4><div class="ann-body muted">noch keine Infos</div></div>`;
-    units.push({ kind:'treffen', plan:t, date:t.datum||'', title, body, abs:absencesForPlan(t.id) });
+    units.push({ kind:'treffen', plan:t, date:t.datum||'', title, body, abs:sortedAbsences(t.id) });
   });
   cache.ann.filter(a=>!a.plan_id).forEach(a=>units.push({ kind:'info', date:a.datum||'', title:a.titel||'Info', body:infoHtml(a), abs:[] }));
 
@@ -568,6 +568,13 @@ function lessonIsMine(r, token){
 function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
 function absentSetForPlan(planId){ return new Set(cache.absences.filter(a=>a.plan_id===planId).map(a=>a.person_id)); }
 function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===planId); }
+function sortedAbsences(planId){
+  const staff=p=>p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung')||hasRole(p,'admin'))?0:1;
+  return absencesForPlan(planId).slice().sort((a,b)=>{
+    const pa=personById(a.person_id), pb=personById(b.person_id);
+    return staff(pa)-staff(pb) || fullName(pa).localeCompare(fullName(pb),'de');
+  });
+}
 function lessonCancelled(r, absentSet){
   if(r.entfaellt) return true;
   if(!INDIVIDUAL_FAECHER.includes(r.fach)) return false;
@@ -802,7 +809,7 @@ async function delTreffen(id){
 }
 function manageAbsences(planId){
   const plan=cache.plans.find(p=>p.id===planId);
-  const list=absencesForPlan(planId);
+  const list=sortedAbsences(planId);
   const rows=list.map(a=>{ const p=personById(a.person_id);
     return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${a.grund?` – ${esc(a.grund)}`:''}</span>
       <button type="button" class="btn-ghost" onclick="delAbsence('${a.id}','${planId}')">✕</button></div>`; }).join('');
