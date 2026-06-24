@@ -9,6 +9,8 @@ node_modules/
 # Personenbezogene Alt-Daten (nur lokal importieren, NICHT committen!)
 hk_*.csv
 *-export.csv
+*.pdf
+HK25.*
 supabase_import_data.sql
 seed_stundenplan_*.sql
 seed_freitag_*.sql
