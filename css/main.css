@@ -244,6 +244,8 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-stu{font-weight:600;color:var(--text)}
 .tt-pause.editable{cursor:pointer}
 .tt-pause.editable:hover{border-color:var(--accent)}
+.tt-dayhead{font-size:18px;color:var(--accent2);margin:14px 0 8px;border-bottom:2px solid var(--accent);padding-bottom:4px}
+.tt-dayhead:first-child{margin-top:0}
 /* Vertretungsplan-Diff */
 .tt-cell.tt-changed{border-left:3px solid var(--accent)}
 .tt-cell.tt-new{border-left:3px solid var(--green)}

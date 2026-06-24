@@ -590,16 +590,7 @@ function tokensHtml(ids, freetext, absentSet, absCls){
 function lessonFields(r){
   return { ueber:r.ueberschrift||'', stu:schuelerDisplay(r), leh:lehrerDisplay(r), kla:klavierDisplay(r), raum:r.raum||'' };
 }
-function renderStundenplan(){
-  fillPlanSelect();
-  const day=$('#ttDay')?.value||'samstag';
-  const tt=$('#ttTitle'); if(tt) tt.textContent='Stundenplan '+(day==='freitag'?'Freitag':'Samstag');
-  const planId=currentPlanId(), base=basePlan();
-  const view=$('#ttView')?.value||'all';
-  const edit=canEdit('stundenplan') && view==='all';
-  $('#ttAddBtn').hidden = !edit;
-  const token=view==='mine'?myToken():null;
-  const diffMode = !!(base && planId!==base.id);
+function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const baseRows = diffMode ? cache.tt.filter(r=>r.tag===day&&r.plan_id===base.id) : [];
   const baseById = new Map(baseRows.map(r=>[r.id,r]));
   const rows=cache.tt.filter(r=>r.tag===day && r.plan_id===planId);
@@ -656,11 +647,7 @@ function renderStundenplan(){
       return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
     }).join('');
   };
-  if(view==='mine' && !token){
-    $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>';
-    return;
-  }
-  let html=slots.map(zeit=>{
+  const html=slots.map(zeit=>{
     let slotRows=rows.filter(r=>r.zeit===zeit);
     if(slotRows.length && slotRows.every(r=>r.fach==='Pause')){
       const pr=slotRows[0];
@@ -671,7 +658,6 @@ function renderStundenplan(){
     let removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && !planSourceIds.has(r.id)) : [];
     if(token){
       slotRows=slotRows.filter(r=>r.fach!=='Pause' && lessonIsMine(r,token));
-      // für mich: Stunde komplett weg ODER ich aus bestehender Stunde rausgenommen
       removed = diffMode ? baseRows.filter(r=>r.zeit===zeit && r.fach!=='Pause' && lessonIsMine(r,token) && (()=>{
           const pr=planBySource.get(r.id); return !pr || !lessonIsMine(pr,token);
         })()) : [];
@@ -680,13 +666,36 @@ function renderStundenplan(){
     }
     return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows,removed)}</div></div>`;
   }).join('');
+  return { html, conflicts: edit?planConflicts(rows, absentSet):[], empty: slots.length===0 };
+}
+function renderStundenplan(){
+  fillPlanSelect();
+  const planId=currentPlanId(), base=basePlan();
+  const plan=cache.plans.find(p=>p.id===planId);
+  const view=$('#ttView')?.value||'all';
+  const edit=canEdit('stundenplan') && view==='all';
+  $('#ttAddBtn').hidden = !edit;
+  const token=view==='mine'?myToken():null;
+  const diffMode = !!(base && planId!==base.id);
+  const dayMode=$('#ttDay')?.value||'auto';
+  const planTage=(plan&&plan.tage)||'fr_sa';
+  const days = dayMode==='freitag'?['freitag'] : dayMode==='samstag'?['samstag']
+    : (planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag']);
+  const tt=$('#ttTitle'); if(tt) tt.textContent = 'Stundenplan' + (plan? ' · '+plan.name+(plan.datum?` (${fmtDate(plan.datum)})`:'') : '');
+  if(view==='mine' && !token){
+    $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>'; return;
+  }
+  let body='', conf=[];
+  days.forEach(day=>{
+    const res=buildDayHtml(day, planId, base, view, edit, token, diffMode);
+    body += `<h3 class="tt-dayhead">${day==='freitag'?'Freitag':'Samstag'}</h3>`
+          + (res.html || '<p class="muted" style="padding:4px 0">– keine Einträge –</p>');
+    conf=conf.concat(res.conflicts);
+  });
   let banner='';
   if(diffMode) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
-  if(edit){
-    const conf=planConflicts(rows, absentSet);
-    if(conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
-  }
-  $('#ttGrid').innerHTML = banner + (html || '<p class="muted">Dieser Plan ist leer.</p>');
+  if(edit && conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
+  $('#ttGrid').innerHTML = banner + (body || '<p class="muted">Dieser Plan ist leer.</p>');
 }
 function planConflicts(planRows, absentSet){
   absentSet=absentSet||new Set();
@@ -738,10 +747,13 @@ function manageTimeSlots(){
     await loadAll(); renderStundenplan(); toast('Zeiten gespeichert');
   });
 }
-async function createTreffen(name, datum){
+function tageOpts(sel){ return [['fr_sa','Freitag + Samstag'],['fr','Nur Freitag (Zusatz)'],['sa','Nur Samstag']]
+  .map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join(''); }
+function tageLabel(t){ return t==='fr'?'nur Fr':t==='sa'?'nur Sa':'Fr+Sa'; }
+async function createTreffen(name, datum, tage){
   const base=basePlan(); if(!base){ toast('Kein Grundplan vorhanden','err'); return null; }
   const {data:plan,error}=await SB.from('plans')
-    .insert({name, datum:datum||null, is_base:false, sort:(Math.max(0,...cache.plans.map(p=>p.sort||0))+1)})
+    .insert({name, datum:datum||null, tage:tage||'fr_sa', is_base:false, sort:(Math.max(0,...cache.plans.map(p=>p.sort||0))+1)})
     .select().single();
   if(error){ toast(error.message,'err'); return null; }
   const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:plan.id, tag:r.tag, zeit:r.zeit,
@@ -771,6 +783,7 @@ function renderTreffen(){
     return `<div class="person-item">
       <span class="pi-name">${esc(p.name)}</span>
       <span class="muted">${p.datum?fmtDate(p.datum):'—'}</span>
+      <span class="role-pill">${tageLabel(p.tage||'fr_sa')}</span>
       <span class="muted">${nAbs} Abmeldung(en)</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn-ghost" onclick="manageAbsences('${p.id}')">Abmeldungen</button>
@@ -780,24 +793,26 @@ function renderTreffen(){
   }).join('') || '<p class="muted">Noch keine Treffen.</p>';
 }
 function addTreffen(){
-  openDialog('Neues Treffen', `<label>Name<input id="tr_name" placeholder="z.B. Treffen 12.07.2026"></label>
-    <label>Datum<input type="date" id="tr_datum"></label>
+  openDialog('Neues Treffen', `<label>Name<input id="tr_name" placeholder="z.B. 14"></label>
+    <label>Datum (Samstag)<input type="date" id="tr_datum"></label>
+    <label>Tage<select id="tr_tage">${tageOpts('fr_sa')}</select></label>
     <p class="muted">Legt einen Vertretungsplan als Kopie des Grundplans an.</p>`, async()=>{
     const datum=$('#tr_datum').value;
     const name=$('#tr_name').value.trim()||(datum?`Treffen ${fmtDate(datum)}`:''); if(!name){ toast('Name oder Datum fehlt','err'); return false; }
-    const plan=await createTreffen(name, datum); if(!plan) return false;
+    const plan=await createTreffen(name, datum, $('#tr_tage').value); if(!plan) return false;
     renderAdmin(); fillPlanSelect(); toast('Treffen angelegt');
   });
 }
 function editTreffen(id){
   const p=cache.plans.find(x=>x.id===id); if(!p) return;
   openDialog('Treffen bearbeiten', `<label>Name<input id="tr_name" value="${esc(p.name)}"></label>
-    <label>Datum<input type="date" id="tr_datum" value="${p.datum||''}"></label>`, async()=>{
+    <label>Datum (Samstag)<input type="date" id="tr_datum" value="${p.datum||''}"></label>
+    <label>Tage<select id="tr_tage">${tageOpts(p.tage||'fr_sa')}</select></label>`, async()=>{
     const name=$('#tr_name').value.trim(); if(!name){ toast('Name fehlt','err'); return false; }
-    const datum=$('#tr_datum').value||null;
-    const {error}=await SB.from('plans').update({name,datum}).eq('id',id);
+    const datum=$('#tr_datum').value||null; const tage=$('#tr_tage').value;
+    const {error}=await SB.from('plans').update({name,datum,tage}).eq('id',id);
     if(error){ toast(error.message,'err'); return false; }
-    Object.assign(p,{name,datum}); renderAdmin(); fillPlanSelect(); toast('Gespeichert');
+    Object.assign(p,{name,datum,tage}); renderAdmin(); fillPlanSelect(); toast('Gespeichert');
   });
 }
 async function delTreffen(id){
@@ -887,7 +902,11 @@ function lessonForm(r){
   const hasCur=zeitList.some(s=>s.label===r.zeit);
   const zeitOpts=(r.zeit&&!hasCur?`<option selected>${esc(r.zeit)}</option>`:'')
     + zeitList.map(s=>`<option ${r.zeit===s.label?'selected':''}>${esc(s.label)}</option>`).join('');
-  return `<label>Zeit<select id="tl_zeit">${zeitOpts}</select></label>
+  const tg=r.tag||'samstag';
+  return `<label>Tag<select id="tl_tag">
+      <option value="samstag" ${tg==='samstag'?'selected':''}>Samstag</option>
+      <option value="freitag" ${tg==='freitag'?'selected':''}>Freitag</option></select></label>
+    <label>Zeit<select id="tl_zeit">${zeitOpts}</select></label>
     <label>Fach<input id="tl_fach" list="fachDatalist" value="${esc(fach)}" onchange="refreshLessonPools()">
       <datalist id="fachDatalist">${fachListOpts}</datalist></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
@@ -933,7 +952,7 @@ function readLessonForm(){
   const raw=id=>[...$('#'+id).selectedOptions].map(o=>o.value);
   const rawStu=raw('tl_stuids'), rawLeh=raw('tl_lehids'), rawKb=raw('tl_kbids');
   const sids=rawStu.filter(v=>v!=='__other__'), ids=rawLeh.filter(v=>v!=='__other__'), kids=rawKb.filter(v=>v!=='__other__');
-  return { zeit:$('#tl_zeit').value.trim(), fach,
+  return { tag:$('#tl_tag').value, zeit:$('#tl_zeit').value.trim(), fach,
     ueberschrift:$('#tl_head').value.trim()||null,
     schueler: rawStu.includes('__other__') ? ($('#tl_stu').value.trim()||null) : null,
     schueler_ids: sids.length?sids:null,
@@ -967,8 +986,9 @@ function editLesson(id){
 }
 function addLesson(){
   const planId=currentPlanId();
-  openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:'samstag'}), async()=>{
-    const rec=readLessonForm(); rec.tag=$('#ttDay')?.value||'samstag'; rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
+  const dm=$('#ttDay')?.value; const defDay=(dm&&dm!=='auto')?dm:'samstag';
+  openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:defDay}), async()=>{
+    const rec=readLessonForm(); rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
     rec.sort=(Math.max(0,...cache.tt.filter(x=>x.plan_id===planId&&x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
     await ensureRoom(rec.raum);
     const {data,error}=await SB.from('timetable').insert(rec).select().single();
