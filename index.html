@@ -115,8 +115,14 @@
   <!-- ========== STUNDENPLAN ========== -->
   <section class="page" id="page-stundenplan">
     <div class="toolbar">
-      <h2 class="section-h">Stundenplan Samstag</h2>
+      <h2 class="section-h" id="ttTitle">Stundenplan</h2>
       <div class="filters">
+        <label>Tag
+          <select id="ttDay">
+            <option value="freitag">Freitag</option>
+            <option value="samstag" selected>Samstag</option>
+          </select>
+        </label>
         <label>Plan <select id="ttPlan"></select></label>
         <label>Ansicht
           <select id="ttView">

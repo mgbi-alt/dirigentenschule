@@ -525,7 +525,7 @@ function fillPlanSelect(){
     (a.is_base!==b.is_base) ? (a.is_base?-1:1) : ((a.datum||'').localeCompare(b.datum||'') || (a.sort-b.sort)));
   sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}${p.datum?` (${fmtDate(p.datum)})`:''}</option>`).join('');
   if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
-  else { const b=basePlan(); if(b) sel.value=b.id; }
+  else { const def=currentTreffen()||basePlan(); if(def) sel.value=def.id; }   // Standard: aktuelles/nächstes Treffen
 }
 function myToken(){
   if(!currentPerson) return null;
@@ -592,15 +592,17 @@ function lessonFields(r){
 }
 function renderStundenplan(){
   fillPlanSelect();
+  const day=$('#ttDay')?.value||'samstag';
+  const tt=$('#ttTitle'); if(tt) tt.textContent='Stundenplan '+(day==='freitag'?'Freitag':'Samstag');
   const planId=currentPlanId(), base=basePlan();
   const view=$('#ttView')?.value||'all';
   const edit=canEdit('stundenplan') && view==='all';
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
   const diffMode = !!(base && planId!==base.id);
-  const baseRows = diffMode ? cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===base.id) : [];
+  const baseRows = diffMode ? cache.tt.filter(r=>r.tag===day&&r.plan_id===base.id) : [];
   const baseById = new Map(baseRows.map(r=>[r.id,r]));
-  const rows=cache.tt.filter(r=>r.tag==='samstag' && r.plan_id===planId);
+  const rows=cache.tt.filter(r=>r.tag===day && r.plan_id===planId);
   const planSourceIds = new Set(rows.map(r=>r.source_id).filter(Boolean));
   const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
   const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
@@ -878,14 +880,16 @@ const withOther=(ids,free)=>{ const a=ids?[...ids]:[]; if((free||'').trim()) a.p
 function lessonForm(r){
   r=r||{};
   const fach=r.fach||'Dirigieren';
-  const fachOpts=FACH_ORDER.concat(['Pause']).map(f=>`<option ${r.fach===f?'selected':''}>${f}</option>`).join('');
+  const fachList=[...new Set(FACH_ORDER.concat(['Pause'], cache.tt.map(x=>x.fach).filter(Boolean)))];
+  const fachListOpts=fachList.map(f=>`<option value="${esc(f)}">`).join('');
   const roomOpts=cache.rooms.map(rm=>`<option value="${esc(rm.name)}">`).join('');
   const zeitList=cache.timeSlots.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const hasCur=zeitList.some(s=>s.label===r.zeit);
   const zeitOpts=(r.zeit&&!hasCur?`<option selected>${esc(r.zeit)}</option>`:'')
     + zeitList.map(s=>`<option ${r.zeit===s.label?'selected':''}>${esc(s.label)}</option>`).join('');
   return `<label>Zeit<select id="tl_zeit">${zeitOpts}</select></label>
-    <label>Fach<select id="tl_fach" onchange="refreshLessonPools()">${fachOpts}</select></label>
+    <label>Fach<input id="tl_fach" list="fachDatalist" value="${esc(fach)}" onchange="refreshLessonPools()">
+      <datalist id="fachDatalist">${fachListOpts}</datalist></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler (Mehrfachauswahl mit Strg/⌘)
       <select id="tl_stuids" multiple size="5" onchange="updateLessonDialogVis()">${peopleSelectOpts(students().slice().sort(byName), withOther(r.schueler_ids,r.schueler))}</select>
@@ -964,7 +968,7 @@ function editLesson(id){
 function addLesson(){
   const planId=currentPlanId();
   openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:'samstag'}), async()=>{
-    const rec=readLessonForm(); rec.tag='samstag'; rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
+    const rec=readLessonForm(); rec.tag=$('#ttDay')?.value||'samstag'; rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
     rec.sort=(Math.max(0,...cache.tt.filter(x=>x.plan_id===planId&&x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
     await ensureRoom(rec.raum);
     const {data,error}=await SB.from('timetable').insert(rec).select().single();
@@ -1365,6 +1369,7 @@ function bind(){
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
   $('#ttView').onchange=renderStundenplan;
+  $('#ttDay').onchange=renderStundenplan;
 
   // Generischer Dialog
   $('#dlgCancel').onclick=closeDialog;
