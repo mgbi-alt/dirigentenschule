@@ -251,6 +251,19 @@ function renderStart(){
   html+=below.map(u=>`<details class="past-termine"><summary>${esc(u.title)}${u.date?` · ${fmtDate(u.date)}`:''}</summary>${unitHtml(u)}</details>`).join('');
   $('#announcementsList').innerHTML = html;
 }
+// Datums-Anzeige eines Treffens: "20.11.-21.11.2026" (Fr+Sa) bzw. einzelnes Datum
+function treffenDateLabel(plan){
+  if(!plan||!plan.datum) return '';
+  const d=new Date(plan.datum+'T00:00:00');
+  const full=x=>`${x.getDate()}.${x.getMonth()+1}.${x.getFullYear()}`;
+  if((plan.tage||'fr_sa')==='fr_sa'){
+    const d0=new Date(d); d0.setDate(d.getDate()-1);
+    return (d0.getMonth()===d.getMonth()&&d0.getFullYear()===d.getFullYear())
+      ? `${d0.getDate()}.${d0.getMonth()+1}.-${full(d)}`
+      : `${full(d0)}-${full(d)}`;
+  }
+  return full(d);
+}
 // Default-Titel: "<Nr> Dirigentenkurs am <Vortag>.-<Tag>.<Monat>.<Jahr>"
 function defaultInfoTitle(plan){
   if(!plan) return '';
@@ -523,7 +536,7 @@ function fillPlanSelect(){
   const sel=$('#ttPlan'); if(!sel) return; const cur=sel.value;
   const ordered=[...cache.plans].sort((a,b)=>
     (a.is_base!==b.is_base) ? (a.is_base?-1:1) : ((a.datum||'').localeCompare(b.datum||'') || (a.sort-b.sort)));
-  sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}${p.datum?` (${fmtDate(p.datum)})`:''}</option>`).join('');
+  sel.innerHTML=ordered.map(p=>`<option value="${p.id}">${esc(p.name)}${p.datum?` (${treffenDateLabel(p)})`:''}</option>`).join('');
   if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
   else { const def=currentTreffen()||basePlan(); if(def) sel.value=def.id; }   // Standard: aktuelles/nächstes Treffen
 }
@@ -596,7 +609,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const rows=cache.tt.filter(r=>r.tag===day && r.plan_id===planId);
   const planSourceIds = new Set(rows.map(r=>r.source_id).filter(Boolean));
   const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
-  const slots=[...new Map(rows.concat(baseRows).map(r=>[r.zeit,r.zeit_sort??0])).entries()].sort((a,b)=>a[1]-b[1]).map(e=>e[0]);
+  const slots=[...new Set(rows.concat(baseRows).map(r=>r.zeit))].sort((a,b)=>slotSortFor(a)-slotSortFor(b));
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
   const absentSet = absentSetForPlan(planId);
   const line=(prefix,cur,old,changed,cls)=> changed
@@ -681,7 +694,7 @@ function renderStundenplan(){
   const planTage=(plan&&plan.tage)||'fr_sa';
   const days = dayMode==='freitag'?['freitag'] : dayMode==='samstag'?['samstag']
     : (planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag']);
-  const tt=$('#ttTitle'); if(tt) tt.textContent = 'Stundenplan' + (plan? ' · '+plan.name+(plan.datum?` (${fmtDate(plan.datum)})`:'') : '');
+  const tt=$('#ttTitle'); if(tt) tt.textContent = 'Stundenplan' + (plan? ' · '+plan.name+(plan.datum?` (${treffenDateLabel(plan)})`:'') : '');
   if(view==='mine' && !token){
     $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>'; return;
   }
@@ -782,7 +795,7 @@ function renderTreffen(){
     const nAbs=cache.absences.filter(a=>a.plan_id===p.id).length;
     return `<div class="person-item">
       <span class="pi-name">${esc(p.name)}</span>
-      <span class="muted">${p.datum?fmtDate(p.datum):'—'}</span>
+      <span class="muted">${p.datum?treffenDateLabel(p):'—'}</span>
       <span class="role-pill">${tageLabel(p.tage||'fr_sa')}</span>
       <span class="muted">${nAbs} Abmeldung(en)</span>
       <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
