@@ -241,6 +241,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-free{background:var(--green-bg);border:1px solid var(--border);border-radius:var(--r);
   text-align:center;color:var(--text2);padding:10px;font-size:13px;flex:1}
 .tt-head{font-weight:700;color:var(--accent2);font-size:12px}
+.tt-fachname{font-weight:700;color:var(--accent2);font-size:13px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
 .tt-stu{font-weight:600;color:var(--text)}
 .tt-pause.editable{cursor:pointer}
 .tt-pause.editable:hover{border-color:var(--accent)}

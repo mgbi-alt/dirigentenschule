@@ -572,6 +572,7 @@ function peopleSelectHtml(pool, selectedIds){
   return pool.map(p=>`<option value="${p.id}" ${sel.has(p.id)?'selected':''}>${esc(fullName(p))}</option>`).join('');
 }
 function lessonIsMine(r, token){
+  if(currentPerson && hasRole(currentPerson,'schueler') && /\balle\b/i.test(r.schueler||'')) return true;  // "Alle Schüler"
   if(currentPerson && ((r.lehrer_ids||[]).includes(currentPerson.id)
     || (r.klavier_ids||[]).includes(currentPerson.id)
     || (r.schueler_ids||[]).includes(currentPerson.id))) return true;
@@ -628,6 +629,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const lehR=tokensHtml(r.lehrer_ids, r.lehrer, absentSet, 'tt-absent-t');
     const klaR=tokensHtml(r.klavier_ids, r.klavier, absentSet, 'tt-absent-t');
     const lines=[];
+    if(r.fach && r.fach!=='Pause' && !FACH_ORDER.includes(r.fach)) lines.push(`<div class="tt-fachname">${esc(r.fach)}</div>`);
     if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
     if(stuR||ch('stu'))      lines.push(lineH('', stuR, c.stu, b.stu, ch('stu'), 'tt-stu'));
     if(lehR||ch('leh'))      lines.push(lineH('L: ', lehR, c.leh, b.leh, ch('leh')));
@@ -657,7 +659,8 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
       const pc=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml);
       const rc=removedRows.filter(r=>r.fach===f).map(removedCell);
-      return `<div class="tt-subject"><div class="tt-fach">${esc(f)}</div><div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
+      const header = FACH_ORDER.includes(f) ? `<div class="tt-fach">${esc(f)}</div>` : '';
+      return `<div class="tt-subject">${header}<div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
     }).join('');
   };
   const html=slots.map(zeit=>{
@@ -927,7 +930,8 @@ function lessonForm(r){
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
     <label>Schüler (Mehrfachauswahl mit Strg/⌘)
       <select id="tl_stuids" multiple size="5" onchange="updateLessonDialogVis()">${peopleSelectOpts(students().slice().sort(byName), withOther(r.schueler_ids,r.schueler))}</select>
-      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_stuids');updateLessonDialogVis()">Auswahl leeren</button></label>
+      <span><button type="button" class="btn-ghost mini" onclick="setAlleSchueler()">Alle Schüler</button>
+      <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_stuids');updateLessonDialogVis()">Auswahl leeren</button></span></label>
     <label id="wrapStuFree" style="display:none">Schüler-Freitext<input id="tl_stu" value="${esc(r.schueler||'')}"></label>
     <label>Lehrer (Mehrfachauswahl mit Strg/⌘)
       <select id="tl_lehids" multiple size="5" onchange="updateLessonDialogVis()">${peopleSelectOpts(peopleForSubject(fach,teacherPeople), withOther(r.lehrer_ids,r.lehrer))}</select>
@@ -949,9 +953,15 @@ function updateLessonDialogVis(){
   const show=(id,c)=>{ const w=$('#'+id); if(w) w.style.display=c?'':'none'; };
   show('wrapStuFree', hasOther('tl_stuids'));
   show('wrapLehFree', hasOther('tl_lehids'));
-  const kb=!['Klavier','Gehörbildung'].includes(fach);
+  const kb=['Dirigieren','Stimmbildung'].includes(fach);   // Klavierbegleitung nur hier
   show('wrapKb', kb);
   show('wrapKlaFree', kb && hasOther('tl_kbids'));
+}
+function setAlleSchueler(){
+  const sel=$('#tl_stuids'); if(!sel) return;
+  [...sel.options].forEach(o=>{ o.selected = (o.value==='__other__'); });
+  $('#tl_stu').value='Alle Schüler';
+  updateLessonDialogVis();
 }
 function refreshLessonPools(){
   const fach=$('#tl_fach').value;
