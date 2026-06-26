@@ -698,15 +698,17 @@ function renderStundenplan(){
   if(view==='mine' && !token){
     $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>'; return;
   }
-  let body='', conf=[];
+  let body='', conf=[], anyDiff=false;
   days.forEach(day=>{
-    const res=buildDayHtml(day, planId, base, view, edit, token, diffMode);
+    const dayDiff = diffMode && day==='samstag';   // Freitag wird nicht gegen den Grundplan verglichen
+    if(dayDiff) anyDiff=true;
+    const res=buildDayHtml(day, planId, base, view, edit, token, dayDiff);
     body += `<h3 class="tt-dayhead">${day==='freitag'?'Freitag':'Samstag'}</h3>`
           + (res.html || '<p class="muted" style="padding:4px 0">– keine Einträge –</p>');
     conf=conf.concat(res.conflicts);
   });
   let banner='';
-  if(diffMode) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
+  if(anyDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
   if(edit && conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
   $('#ttGrid').innerHTML = banner + (body || '<p class="muted">Dieser Plan ist leer.</p>');
 }
