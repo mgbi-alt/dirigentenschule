@@ -117,13 +117,6 @@
     <div class="toolbar">
       <h2 class="section-h" id="ttTitle">Stundenplan</h2>
       <div class="filters">
-        <label>Tag
-          <select id="ttDay">
-            <option value="auto" selected>Ganzes Treffen</option>
-            <option value="freitag">Nur Freitag</option>
-            <option value="samstag">Nur Samstag</option>
-          </select>
-        </label>
         <label>Plan <select id="ttPlan"></select></label>
         <label>Ansicht
           <select id="ttView">
@@ -136,6 +129,7 @@
         <button class="btn-primary" id="ttAddBtn" hidden>+ Eintrag</button>
       </div>
     </div>
+    <div id="ttDayBtns" class="subnav"></div>
     <div id="ttGrid"></div>
   </section>
 

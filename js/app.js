@@ -11,6 +11,7 @@ let seesAll = false;               // Lehrer/Klassenleitung/Admin sehen alle Sch
 let realPerson = null;             // tatsächlich eingeloggte Person (für Admin-Ansicht-als)
 let realIsAdmin = false;
 let viewAsId = null;               // Admin schaut als diese Person
+let ttSelectedDay = 'samstag';     // aktuell gewählter Tag im Stundenplan
 
 // Rollen einer Person (Array 'roles' bevorzugt, Fallback altes 'rolle')
 function personRoles(p){
@@ -693,28 +694,27 @@ function renderStundenplan(){
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
   const diffMode = !!(base && planId!==base.id);
-  const dayMode=$('#ttDay')?.value||'auto';
   const planTage=(plan&&plan.tage)||'fr_sa';
-  const days = dayMode==='freitag'?['freitag'] : dayMode==='samstag'?['samstag']
-    : (planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag']);
+  const availDays = planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag'];
+  if(!availDays.includes(ttSelectedDay)) ttSelectedDay=availDays[0];
+  renderDayButtons(availDays);
   const tt=$('#ttTitle'); if(tt) tt.textContent = 'Stundenplan' + (plan? ' · '+plan.name+(plan.datum?` (${treffenDateLabel(plan)})`:'') : '');
   if(view==='mine' && !token){
     $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>'; return;
   }
-  let body='', conf=[], anyDiff=false;
-  days.forEach(day=>{
-    const dayDiff = diffMode && day==='samstag';   // Freitag wird nicht gegen den Grundplan verglichen
-    if(dayDiff) anyDiff=true;
-    const res=buildDayHtml(day, planId, base, view, edit, token, dayDiff);
-    body += `<h3 class="tt-dayhead">${day==='freitag'?'Freitag':'Samstag'}</h3>`
-          + (res.html || '<p class="muted" style="padding:4px 0">– keine Einträge –</p>');
-    conf=conf.concat(res.conflicts);
-  });
+  const day=ttSelectedDay;
+  const dayDiff = diffMode && day==='samstag';   // Freitag wird nicht gegen den Grundplan verglichen
+  const res=buildDayHtml(day, planId, base, view, edit, token, dayDiff);
   let banner='';
-  if(anyDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
-  if(edit && conf.length) banner+=`<div class="tt-conflicts"><b>⚠ ${conf.length} Konflikt(e):</b><ul>${conf.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
-  $('#ttGrid').innerHTML = banner + (body || '<p class="muted">Dieser Plan ist leer.</p>');
+  if(dayDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
+  if(edit && res.conflicts.length) banner+=`<div class="tt-conflicts"><b>⚠ ${res.conflicts.length} Konflikt(e):</b><ul>${res.conflicts.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
+  $('#ttGrid').innerHTML = banner + (res.html || '<p class="muted" style="padding:6px 0">– keine Einträge –</p>');
 }
+function renderDayButtons(days){
+  const c=$('#ttDayBtns'); if(!c) return;
+  c.innerHTML = days.map(d=>`<button class="sub-btn ${d===ttSelectedDay?'active':''}" onclick="selectDay('${d}')">${d==='freitag'?'Freitag':'Samstag'}</button>`).join('');
+}
+function selectDay(d){ ttSelectedDay=d; renderStundenplan(); }
 function planConflicts(planRows, absentSet){
   absentSet=absentSet||new Set();
   const out=[], byZeit={};
@@ -910,21 +910,26 @@ function peopleSelectOpts(pool, selectedIds){
     + `<option value="__other__" ${sel.has('__other__')?'selected':''}>— Sonstige (Freitext) —</option>`;
 }
 const withOther=(ids,free)=>{ const a=ids?[...ids]:[]; if((free||'').trim()) a.push('__other__'); return a; };
+function zeitIsFreitag(label){ const m=(label||'').match(/^\s*(\d{1,2}):/); return !!m && parseInt(m[1])>=17; }
+function zeitOptsForTag(tag, selected){
+  const list=cache.timeSlots.slice().sort((a,b)=>(a.sort||0)-(b.sort||0))
+    .filter(s=> tag==='freitag' ? zeitIsFreitag(s.label) : !zeitIsFreitag(s.label));
+  const hasCur=list.some(s=>s.label===selected);
+  return (selected&&!hasCur?`<option selected>${esc(selected)}</option>`:'')
+    + list.map(s=>`<option ${selected===s.label?'selected':''}>${esc(s.label)}</option>`).join('');
+}
+function refreshLessonZeit(){ const t=$('#tl_tag').value; $('#tl_zeit').innerHTML=zeitOptsForTag(t, $('#tl_zeit').value); }
 function lessonForm(r){
   r=r||{};
   const fach=r.fach||'Dirigieren';
   const fachList=[...new Set(FACH_ORDER.concat(['Pause'], cache.tt.map(x=>x.fach).filter(Boolean)))];
   const fachListOpts=fachList.map(f=>`<option value="${esc(f)}">`).join('');
   const roomOpts=cache.rooms.map(rm=>`<option value="${esc(rm.name)}">`).join('');
-  const zeitList=cache.timeSlots.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const hasCur=zeitList.some(s=>s.label===r.zeit);
-  const zeitOpts=(r.zeit&&!hasCur?`<option selected>${esc(r.zeit)}</option>`:'')
-    + zeitList.map(s=>`<option ${r.zeit===s.label?'selected':''}>${esc(s.label)}</option>`).join('');
   const tg=r.tag||'samstag';
-  return `<label>Tag<select id="tl_tag">
+  return `<label>Tag<select id="tl_tag" onchange="refreshLessonZeit()">
       <option value="samstag" ${tg==='samstag'?'selected':''}>Samstag</option>
       <option value="freitag" ${tg==='freitag'?'selected':''}>Freitag</option></select></label>
-    <label>Zeit<select id="tl_zeit">${zeitOpts}</select></label>
+    <label>Zeit<select id="tl_zeit">${zeitOptsForTag(tg, r.zeit)}</select></label>
     <label>Fach<input id="tl_fach" list="fachDatalist" value="${esc(fach)}" onchange="refreshLessonPools()">
       <datalist id="fachDatalist">${fachListOpts}</datalist></label>
     <label>Überschrift<input id="tl_head" value="${esc(r.ueberschrift||'')}" placeholder="z.B. Gruppe 1"></label>
@@ -1011,8 +1016,7 @@ function editLesson(id){
 }
 function addLesson(){
   const planId=currentPlanId();
-  const dm=$('#ttDay')?.value; const defDay=(dm&&dm!=='auto')?dm:'samstag';
-  openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:defDay}), async()=>{
+  openDialog('Neuer Stundenplan-Eintrag', lessonForm({tag:ttSelectedDay||'samstag'}), async()=>{
     const rec=readLessonForm(); rec.plan_id=planId; rec.zeit_sort=slotSortFor(rec.zeit);
     rec.sort=(Math.max(0,...cache.tt.filter(x=>x.plan_id===planId&&x.zeit===rec.zeit&&x.fach===rec.fach).map(x=>x.sort||0))+1);
     await ensureRoom(rec.raum);
@@ -1414,7 +1418,6 @@ function bind(){
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
   $('#ttView').onchange=renderStundenplan;
-  $('#ttDay').onchange=renderStundenplan;
 
   // Generischer Dialog
   $('#dlgCancel').onclick=closeDialog;
