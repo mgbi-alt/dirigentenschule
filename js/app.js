@@ -574,6 +574,9 @@ function peopleSelectHtml(pool, selectedIds){
 }
 function lessonIsMine(r, token){
   if(currentPerson && hasRole(currentPerson,'schueler') && /\balle\b/i.test(r.schueler||'')) return true;  // "Alle Schüler"
+  // Stunde ohne zugeordneten Lehrer -> bei allen Lehrern/Klassenleitungen anzeigen (Default)
+  if(currentPerson && (hasRole(currentPerson,'lehrer')||hasRole(currentPerson,'klassenleitung'))
+     && r.fach!=='Pause' && !(r.lehrer_ids&&r.lehrer_ids.length) && !(r.lehrer&&(r.lehrer||'').trim())) return true;
   if(currentPerson && ((r.lehrer_ids||[]).includes(currentPerson.id)
     || (r.klavier_ids||[]).includes(currentPerson.id)
     || (r.schueler_ids||[]).includes(currentPerson.id))) return true;
