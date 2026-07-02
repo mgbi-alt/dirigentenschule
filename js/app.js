@@ -42,6 +42,8 @@ const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fullName = p => p ? `${p.nachname}, ${p.vorname||''}`.replace(/,\s*$/,'') : '';
 const fmtDate = d => d ? new Date(d).toLocaleDateString('de-DE') : '';
+// wie fmtDate, aber Platzhalterdaten (Jahr < 2000, z.B. importierte Kapitel ohne echtes Datum) werden ausgeblendet
+const fmtDateOpt = d => (d && new Date(d).getFullYear() >= 2000) ? fmtDate(d) : '';
 function toast(msg,type='ok'){
   const t=$('#toast'); t.textContent=msg; t.className='toast '+type; t.hidden=false;
   clearTimeout(t._t); t._t=setTimeout(()=>t.hidden=true,2800);
@@ -175,7 +177,7 @@ async function loadAll(){
   const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
-    SB.from('theory_meetings').select('*').order('datum'),
+    SB.from('theory_meetings').select('*').order('sort').order('datum'),
     SB.from('theory_tasks').select('*').order('sort'),
     SB.from('theory_status').select('*'),
     SB.from('tests').select('*'),
@@ -287,11 +289,19 @@ function renderHA(){
 // ----- Musiktheorie -----
 function meetingPercent(meetingId, personId){
   const tasks = cache.tasks.filter(t=>t.meeting_id===meetingId);
-  const total = tasks.reduce((s,t)=>s+(+t.gewicht||0),0);
+  // Nur Aufgaben mit Status-Eintrag dieser Person zählen.
+  // Fehlender Eintrag ("-"/leer beim Import) = für diese Person nicht relevant -> zieht das Treffen nicht auf 0 %.
+  const rel = tasks.map(t=>({w:+t.gewicht||0, s:cache.status.find(s=>s.task_id===t.id&&s.person_id===personId)}))
+    .filter(x=>x.s);
+  const total = rel.reduce((s,x)=>s+x.w,0);
   if(!total) return null;
-  const done = tasks.filter(t=>cache.status.find(s=>s.task_id===t.id&&s.person_id===personId&&s.erledigt))
-    .reduce((s,t)=>s+(+t.gewicht||0),0);
+  const done = rel.filter(x=>x.s.erledigt).reduce((s,x)=>s+x.w,0);
   return Math.round(done/total*100);
+}
+// Ø über alle Theorie-Treffen (Hausaufgaben) einer Person – speist die Spalte „Hausaufgaben"
+function hausaufgabenAvg(pid){
+  const vals = cache.meetings.map(m=>meetingPercent(m.id,pid)).filter(v=>v!=null);
+  return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
 }
 function renderTheory(){
   // Treffen-Karten mit Download + Abhaken
@@ -313,7 +323,7 @@ function renderTheory(){
     const pct = currentPerson?meetingPercent(m.id,currentPerson.id):null;
     return `<div class="meeting-card">
       <h4>${esc(m.titel||'Treffen')} ${pct!=null?`<span class="role-pill">${pct}%</span>`:''}</h4>
-      <div class="date">${fmtDate(m.datum)}</div>
+      <div class="date">${fmtDateOpt(m.datum)}</div>
       <div class="dl-links">${links||'<span class="muted">Keine Dateien</span>'}</div>
       ${taskRows||'<p class="muted">Keine Aufgaben</p>'}
     </div>`;
@@ -322,7 +332,7 @@ function renderTheory(){
   // Matrix: Zeilen Schüler, Spalten Treffen, % erledigt + Ø
   const ms=cache.meetings;
   const head = `<tr><th class="name">Schüler</th>${ms.map(m=>
-    `<th>${esc(m.titel||fmtDate(m.datum))}<br><span class="muted">${fmtDate(m.datum)}</span></th>`).join('')}
+    `<th>${esc(m.titel||fmtDate(m.datum))}<br><span class="muted">${fmtDateOpt(m.datum)}</span></th>`).join('')}
     <th class="sum">Ø Gesamt</th></tr>`;
   const rows = visibleStudents().map(p=>{
     const vals = ms.map(m=>meetingPercent(m.id,p.id));
@@ -1100,19 +1110,20 @@ function testsAvg(fach, pid){
 function ihkNote(p){ if(p==null)return ''; if(p>=92)return'1'; if(p>=81)return'2'; if(p>=67)return'3'; if(p>=50)return'4'; if(p>=30)return'5'; return'6'; }
 function gesamtPct(g, fach, pid){
   let ws=0, sum=0;
-  gradeColsFor(fach).filter(c=>(c.typ==='manual'||c.typ==='tests')&&(+c.gewicht||0)>0).forEach(c=>{
-    const v=c.typ==='tests'?testsAvg(fach,pid):gradeVal(g,c);
+  gradeColsFor(fach).filter(c=>(c.typ==='manual'||c.typ==='tests'||c.typ==='hausaufgaben')&&(+c.gewicht||0)>0).forEach(c=>{
+    const v=c.typ==='tests'?testsAvg(fach,pid):c.typ==='hausaufgaben'?hausaufgabenAvg(pid):gradeVal(g,c);
     if(v!=null){ const w=+c.gewicht||0; sum+=w*(+v); ws+=w; }
   });
   return ws>0?Math.round(sum/ws):null;
 }
 function colValue(g, col, fach, pid){
   if(col.typ==='tests')  return testsAvg(fach,pid);
+  if(col.typ==='hausaufgaben') return hausaufgabenAvg(pid);
   if(col.typ==='gesamt') return gesamtPct(g,fach,pid);
   if(col.typ==='note'){ const p=gesamtPct(g,fach,pid); return p==null?null:ihkNote(p); }
   return gradeVal(g,col);
 }
-function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
+function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['hausaufgaben','Hausaufgaben Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
   .map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join(''); }
 // --- Test-Spalten-Verwaltung ---
 function tcAppendRow(){
@@ -1140,7 +1151,7 @@ function manageTestCols(fach){
   const body=`<div id="tcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="tcAppendRow()">+ Test</button>
     <p class="muted">Neue 5-Minuten-Tests anlegen. „Sort" bestimmt die Reihenfolge.</p>`;
-  openDialog(`Tests – ${fach==='harmonielehre'?'Harmonielehre':'Gehörbildung'}`, body, async()=>{
+  openDialog(`Tests – ${fach==='harmonielehre'?'Musiktheorie':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#tcList .gc-row')){
       const label=$('.tc-label',el)?.value.trim(); if(!label) continue;
@@ -1217,8 +1228,8 @@ function manageGradeCols(fach){
   </div>`).join('');
   const body=`<div id="gcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="gcAppendRow()">+ Spalte</button>
-    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt für „Gesamt %".</p>`;
-  openDialog(`Spalten – ${fach==='harmonielehre'?'Harmonielehre':'Gehörbildung'}`, body, async()=>{
+    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Hausaufgaben Ø</b> = Schnitt aus den Theorie-Treffen, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt für „Gesamt %".</p>`;
+  openDialog(`Spalten – ${fach==='harmonielehre'?'Musiktheorie':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#gcList .gc-row')){
       const label=$('.gc-label',el)?.value.trim(); if(!label) continue;

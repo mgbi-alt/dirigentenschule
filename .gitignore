@@ -15,3 +15,4 @@ supabase_import_data.sql
 seed_stundenplan_*.sql
 seed_freitag_*.sql
 seed_lehrer.sql
+seed_musiktheorie_ha.sql
