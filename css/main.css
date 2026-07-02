@@ -1,17 +1,21 @@
-/* ===== Dirigentenschule – Styles ===== */
+/* ===== Dirigentenschule – Styles (Warmes-Pergament-Design) ===== */
 :root{
-  --bg:#161b21; --bg2:#1f2933; --card:#1e252e; --border:#2e3944;
-  --text:#e7ecf1; --text2:#aab4bf; --text3:#6b7682;
-  --accent:#c9a84c; --accent2:#e0c876;
-  --green:#1f7a4d; --green-bg:#244b39; --yellow-bg:#5b5022; --red-bg:#5a2b2b;
-  --r:8px; --r2:14px;
-  --shadow:0 4px 16px rgba(0,0,0,.3);
+  --bg:#f7f1e3; --bg2:#fffdf7; --card:#fffbf2; --border:rgba(122,59,46,.16);
+  --text:#3d2e22; --text2:#8a7458; --text3:#ab9b80;
+  --accent:#7a3b2e; --accent2:#5c2922;
+  --green:#3f8f63; --success:#3f8f63; --err:#c0392b;
+  --green-bg:#e2f0e7; --yellow-bg:#fbeecb; --red-bg:#f7dede;
+  --r:10px; --r2:16px;
+  --shadow:0 6px 20px rgba(122,59,46,.14);
+  --fd:'Playfair Display',Georgia,serif; --fb:'DM Sans',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
 body{
   margin:0; background:var(--bg); color:var(--text);
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:15px;
+  font-family:var(--fb); font-size:15px;
 }
+h1,h2,h3,.section-h,.hero h1,.hd-title,.gate-card h1,.stat-card .num,
+.tt-fach,.tt-fachname,.tt-dayhead,.doc-card h3,.modal-box h3,.dlg-card h3{font-family:var(--fd)}
 h1,h2,h3{font-weight:600}
 .muted{color:var(--text2);font-size:13px;margin:4px 0 14px}
 em{color:var(--text2);font-style:normal}
@@ -30,7 +34,7 @@ em{color:var(--text2);font-style:normal}
   background:none;border:none;color:var(--text2);padding:8px 14px;
   border-radius:var(--r);cursor:pointer;font-size:15px;font-weight:500;
 }
-.nav-btn:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-btn:hover{color:var(--text);background:rgba(122,59,46,.06)}
 .nav-btn.active{color:var(--bg);background:var(--accent)}
 .hd-right{display:flex;align-items:center;gap:10px}
 .user-badge{color:var(--text2);font-size:13px}
@@ -38,7 +42,7 @@ em{color:var(--text2);font-style:normal}
 
 /* ---- Buttons ---- */
 .btn-primary{
-  background:var(--accent);color:#1a1a1a;border:none;padding:8px 16px;
+  background:var(--accent);color:var(--bg2);border:none;padding:8px 16px;
   border-radius:var(--r);cursor:pointer;font-weight:600;font-size:14px;
 }
 .btn-primary:hover{background:var(--accent2)}
@@ -139,7 +143,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .contact-card .nm{font-weight:600}
 .contact-card .meta{color:var(--text2);font-size:12px;margin-top:3px;line-height:1.5}
 .contact-card a{color:var(--accent2);text-decoration:none}
-.role-pill{display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;background:var(--bg2);color:var(--text2);margin-top:6px}
+.role-pill{display:inline-block;font-size:10px;padding:1px 8px;border-radius:20px;background:rgba(122,59,46,.12);color:var(--accent2);border:1px solid rgba(122,59,46,.22);margin-top:6px}
 
 /* ---- Modal ---- */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
@@ -151,11 +155,11 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .modal-box label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text2);margin-bottom:12px}
 .modal-box input,.modal-box .ta{margin-bottom:12px;width:100%}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
-.modal-err{color:#e08;font-size:13px;min-height:18px;margin:8px 0 0}
+.modal-err{color:var(--err);font-size:13px;min-height:18px;margin:8px 0 0}
 
 /* ---- Import / Admin ---- */
 .import-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
-.log{background:#0e1217;border:1px solid var(--border);border-radius:var(--r);padding:12px;
+.log{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px;
   font-size:12px;color:var(--text2);max-height:260px;overflow:auto;white-space:pre-wrap}
 .admin-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)}
 
@@ -183,7 +187,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .gate-card h1{margin:0;font-size:24px;color:var(--accent2)}
 .gate-card>p{margin:0 0 6px;color:var(--text2)}
 .gate-card input{width:100%}
-.gate-err{color:#e88;min-height:18px;font-size:13px;margin:0}
+.gate-err{color:var(--err);min-height:18px;font-size:13px;margin:0}
 
 /* ---- Generischer Dialog ---- */
 #dlgBody{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
@@ -253,7 +257,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-cell.tt-removed{opacity:.7;border-left:3px solid var(--err);background:var(--bg2)}
 .tt-chg{color:var(--accent2)}
 .tt-chg s,.tt-removed s{color:var(--text3)}
-.tt-badge{position:absolute;top:4px;right:5px;font-size:9px;padding:0 6px;border-radius:8px;background:var(--bg2);color:var(--text2)}
+.tt-badge{position:absolute;top:4px;right:5px;font-size:9px;padding:0 6px;border-radius:8px;background:rgba(122,59,46,.1);color:var(--accent2)}
 .tt-leg-chg,.tt-leg-new,.tt-leg-rem{padding:0 6px;border-radius:4px}
 .tt-leg-chg{border-left:3px solid var(--accent)}
 .tt-leg-new{border-left:3px solid var(--green)}
@@ -263,7 +267,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-cell.tt-cancelled .tt-head,.tt-cell.tt-cancelled .tt-stu,
 .tt-cell.tt-cancelled .tt-meta,.tt-cell.tt-cancelled .tt-room{text-decoration:line-through}
 .tt-absent{text-decoration:line-through;color:var(--text3)}
-.tt-absent-t{color:#ff6b6b;font-weight:700}
+.tt-absent-t{color:var(--err);font-weight:700}
 .tt-conflicts{background:var(--red-bg);border:1px solid var(--err);border-radius:var(--r);padding:8px 14px;margin-bottom:12px;font-size:13px}
 .tt-conflicts ul{margin:6px 0 0;padding-left:18px}
 .tt-conflicts li{color:var(--text)}
@@ -279,7 +283,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   background:var(--bg2);border:1px solid var(--accent);color:var(--text);
   padding:12px 20px;border-radius:var(--r);box-shadow:var(--shadow);z-index:200;font-size:14px}
 .toast[hidden]{display:none}
-.toast.err{border-color:#e08}.toast.ok{border-color:var(--green)}
+.toast.err{border-color:var(--err)}.toast.ok{border-color:var(--green)}
 
 @media(max-width:640px){
   #mainNav{order:3;flex-basis:100%;overflow-x:auto}
