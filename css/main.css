@@ -231,6 +231,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 /* ---- Bewertungsspalten-Verwaltung ---- */
 .gc-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .gc-row .gc-label{flex:1}
+.gc-row .tc-plan{flex:1;min-width:0}
 #gcList{margin-bottom:8px}
 
 /* ---- Stundenplan ---- */

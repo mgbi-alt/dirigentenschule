@@ -1211,9 +1211,23 @@ function colValue(g, col, fach, pid){
 function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['hausaufgaben','Hausaufgaben Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
   .map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join(''); }
 // --- Test-Spalten-Verwaltung ---
+// Options-HTML aller Treffen (plans, is_base=false), chronologisch.
+function treffenOptions(selId){
+  const treffen=cache.plans.filter(p=>!p.is_base)
+    .sort((a,b)=>(a.datum||'').localeCompare(b.datum||'')||((a.sort||0)-(b.sort||0)));
+  return `<option value="">— kein Treffen —</option>`+treffen.map(p=>
+    `<option value="${p.id}" ${p.id===selId?'selected':''}>${esc(p.name||'Treffen')}${p.datum?' · '+esc(treffenDateLabel(p)):''}</option>`).join('');
+}
+// Stabiler, eindeutiger Label-Schlüssel für eine neue Test-Spalte (aus dem Treffen abgeleitet).
+function tcLabelForPlan(fach, pl){
+  const base=pl?(pl.name?pl.name+(pl.datum?' '+treffenDateLabel(pl):''):(treffenDateLabel(pl)||'Treffen')):'Test';
+  const taken=new Set(cache.testCols.filter(c=>c.fach===fach).map(c=>c.label));
+  let label=base, i=2; while(taken.has(label)){ label=base+' ('+i+')'; i++; }
+  return label;
+}
 function tcAppendRow(){
   const wrap=document.createElement('div'); wrap.className='gc-row';
-  wrap.innerHTML=`<input class="tc-label" placeholder="z.B. 2026 Juli">
+  wrap.innerHTML=`<select class="tc-plan">${treffenOptions('')}</select>
     <input class="tc-sort" type="number" style="width:70px" placeholder="Sort">
     <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
   $('#tcList').appendChild(wrap);
@@ -1230,20 +1244,24 @@ async function delTestCol(id, fach, label){
 function manageTestCols(fach){
   const cols=cache.testCols.filter(c=>c.fach===fach).sort((a,b)=>(a.sort||0)-(b.sort||0));
   const rowsHtml=cols.map(c=>`<div class="gc-row" data-id="${c.id}">
-    <input class="tc-label" value="${esc(c.label)}">
+    <select class="tc-plan">${treffenOptions(c.plan_id||'')}</select>
     <input class="tc-sort" type="number" style="width:70px" value="${c.sort||0}">
     <button type="button" class="btn-ghost" onclick="delTestCol('${c.id}','${fach}','${esc(c.label)}')">✕</button></div>`).join('');
   const body=`<div id="tcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="tcAppendRow()">+ Test</button>
-    <p class="muted">Neue 5-Minuten-Tests anlegen. „Sort" bestimmt die Reihenfolge.</p>`;
+    <p class="muted">Jede Test-Spalte gehört zu einem Treffen. „Sort" bestimmt die Reihenfolge.</p>`;
   openDialog(`Tests – ${fach==='harmonielehre'?'Musiktheorie':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#tcList .gc-row')){
-      const label=$('.tc-label',el)?.value.trim(); if(!label) continue;
-      const s=parseInt($('.tc-sort',el)?.value); sort+=10; const id=el.dataset.id;
-      const sortv=isNaN(s)?sort:s;
-      if(id) await SB.from('test_columns').update({label,sort:sortv}).eq('id',id);
-      else   await SB.from('test_columns').insert({fach,label,sort:sortv});
+      const planId=$('.tc-plan',el)?.value||null;
+      const s=parseInt($('.tc-sort',el)?.value); sort+=10;
+      const sortv=isNaN(s)?sort:s; const id=el.dataset.id;
+      if(id){
+        await SB.from('test_columns').update({plan_id:planId||null, sort:sortv}).eq('id',id);
+      } else if(planId){
+        const label=tcLabelForPlan(fach, cache.plans.find(p=>p.id===planId));
+        await SB.from('test_columns').insert({fach,label,sort:sortv,plan_id:planId});
+      }
     }
     await loadAll(); renderBewertung(); toast('Tests gespeichert');
   });
