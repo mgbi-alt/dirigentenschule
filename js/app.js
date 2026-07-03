@@ -1184,9 +1184,8 @@ async function adoptBaseLesson(baseId, planId){
 function renderBewertung(){
   $$('.grades-cols-btn').forEach(b=>b.hidden=!canEdit('bewertung'));
   $$('.tests-cols-btn').forEach(b=>b.hidden=!canEdit('tests'));
-  const sub=$('#page-bewertung .sub-btn.active')?.dataset.sub||'harmonielehre';
-  if(sub==='harmonielehre'){ renderTests('harmonielehre','#hlTests'); renderGrades('harmonielehre','#hlGrades'); }
-  else { renderTests('gehoerbildung','#gbTests'); renderGrades('gehoerbildung','#gbGrades'); }
+  renderTests('harmonielehre','#hlTests');   renderGrades('harmonielehre','#hlGrades');
+  renderTests('gehoerbildung','#gbTests');   renderGrades('gehoerbildung','#gbGrades');
 }
 function testColsFor(fach){
   const map=new Map();
@@ -1335,7 +1334,7 @@ function renderGrades(fach, sel){
   if(!cols.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Spalten definiert.</p>'; return; }
   if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
   const fmt=(col,v)=> v==null?'–':(col.typ==='note'||col.art==='text'?esc(String(v)):Math.round(v)+'%');
-  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}</tr>`;
+  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th class="treffen-col">${esc(c.label).replace(/ /g,'<br>')}</th>`).join('')}</tr>`;
   const body=visibleStudents().map(p=>{
     const g=rows.find(x=>x.person_id===p.id);
     if(!g && !edit) return '';
