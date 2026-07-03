@@ -1,0 +1,48 @@
+{
+  "_note": "Aufgabentexte + Kapitel->Treffen-Zuordnung aus den Fabrik-Metadaten (Screenshots vom 2026-07-03). Grundlage fuer den Re-Import der Musiktheorie-Hausaufgaben, gekoppelt an die allgemeinen Treffen (plans). Status (Ja/Nein) kommt weiter aus hk_hausaufgaben_harmonielehre-export.csv. Aufgaben-Reihenfolge = A-Nummer.",
+  "chapters": [
+    { "hk": 1,  "monat": "2025-09", "nr": 1,  "tasks": [
+      "A1.1 - Lieder aus dem Unterricht analysieren",
+      "A1.2 - Praeludium von Bach analysieren",
+      "A1.3 - Zusatzaufgabe" ] },
+    { "hk": 2,  "monat": "2025-10", "nr": 2,  "tasks": [
+      "A2.1 - Skript lesen",
+      "A2.2 - Lied „Anbetung bringen wir“ analysieren" ] },
+    { "hk": 3,  "monat": "2025-11", "nr": 3,  "tasks": [
+      "A3.1 - Skript lesen",
+      "A3.2 - „Aus der Tiefe“ analysieren",
+      "A3.3 - „Jesus am Kreuz“ analysieren",
+      "A3.4 - Harmoniekurs bei Lehrklaenge durcharbeiten" ] },
+    { "hk": 4,  "monat": "2025-12", "nr": 4,  "tasks": [
+      "A4.1 - Skript lesen „Harmonielehre Kapitel 4“",
+      "A4.2 - Schluesse analysieren" ] },
+    { "hk": 5,  "monat": "2026-01", "nr": 5,  "tasks": [
+      "A5.1 - Skript Harmonielehre lesen",
+      "A5.2 - Harmonieanalyse durchfuehren „O Traurigkeit“",
+      "A5.3 - Harmonieanalyse durchfuehren „O Haupt voll Blut und Wunden“",
+      "A5.4 - Finalisiere Aufgaben aus dem Unterricht" ] },
+    { "hk": 6,  "monat": "2026-02", "nr": 6,  "tasks": [
+      "A6.1 - Skript lesen",
+      "A6.2 - Seiten auf lehrklaenge.de durcharbeiten",
+      "A6.3 - Arbeitsblatt „Nebennoten 5.2“",
+      "A6.4 - Arbeitsblatt „Amen!“" ] },
+    { "hk": 7,  "monat": "2026-03", "nr": 7,  "tasks": [
+      "A7.1 - Aufgabenblatt „Ab Sextakkorde_Arrangieren“ vervollstaendigen",
+      "A7.2 - Aufgabenblatt „AB Sextakkorde Sub-Dominante“ bearbeiten" ] },
+    { "hk": 8,  "monat": "2026-04", "nr": 8,  "tasks": [
+      "A8.1 - Skript lesen „Quartsextakkorde“",
+      "A8.2 - Skript lesen „Dominantformen“",
+      "A8.3 - Aufgabenblatt „AB Arrangieren“ bearbeiten" ] },
+    { "hk": 9,  "monat": "2026-05", "nr": 9,  "tasks": [
+      "A9.1 - (Beschreibung fehlt in den Metadaten - vom Nutzer nachtragen)" ] },
+    { "hk": 10, "monat": "2026-05", "nr": "Z", "zusatz": true, "tasks": [
+      "A10.1 - Internetseiten durcharbeiten",
+      "A10.2 - Aufgabenblatt „Dominantformen“" ] },
+    { "hk": 11, "monat": "2026-06", "nr": 11, "tasks": [
+      "A11.1 - AB fertigstellen „AB Zwischendominante“",
+      "A11.2 - Praesentationsfolien durcharbeiten „Die Dominante“",
+      "A11.3 - AB bearbeiten „AB Dominantseptakkorde aufbauen“",
+      "A11.4 - AB bearbeiten „AB Dominantseptakkorde aufloesen“",
+      "A11.5 - Skript lesen „Subdominantformen“" ] }
+  ]
+}
