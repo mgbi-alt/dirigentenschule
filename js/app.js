@@ -319,7 +319,7 @@ function renderTheory(){
     return;
   }
   const head = `<tr><th class="name">Schüler</th>${treffen.map(t=>
-    `<th>${esc(t.name||'Treffen')}<br><span class="muted">${esc(treffenDateLabel(t))}</span></th>`).join('')}
+    `<th class="treffen-col">${esc(t.name||'Treffen')}<br><span class="col-date">${esc(treffenDateLabel(t))}</span></th>`).join('')}
     <th class="sum">Ø Gesamt</th></tr>`;
   const rows = visibleStudents().map(p=>{
     const mayRow = edit || (currentPerson && currentPerson.id===p.id);
@@ -1137,7 +1137,7 @@ function testColsFor(fach){
 function testColPlan(c){ return c&&c.plan_id ? cache.plans.find(p=>p.id===c.plan_id) : null; }
 function testColHeadHtml(c){
   const pl=testColPlan(c);
-  return pl ? `${esc(pl.name||'Treffen')}<br><span class="muted">${esc(treffenDateLabel(pl))}</span>` : esc(c.label);
+  return pl ? `${esc(pl.name||'Treffen')}<br><span class="col-date">${esc(treffenDateLabel(pl))}</span>` : esc(c.label);
 }
 function testColText(c){
   const pl=testColPlan(c);
@@ -1148,7 +1148,7 @@ function renderTests(fach, sel){
   const cols=testColsFor(fach);
   const edit=canEdit('tests');
   if(!cols.length){ $(sel).innerHTML=`<p class="muted" style="padding:14px">${edit?'Noch keine Tests – über „Tests verwalten" anlegen.':'Keine Tests.'}</p>`; return; }
-  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${testColHeadHtml(c)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
+  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th class="treffen-col">${testColHeadHtml(c)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
   const body=visibleStudents().map(p=>{
     const vals=cols.map(c=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
