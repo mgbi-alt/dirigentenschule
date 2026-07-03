@@ -302,14 +302,17 @@ function hausaufgabenAvg(pid){
   const vals = cache.meetings.map(m=>meetingPercent(m.id,pid)).filter(v=>v!=null);
   return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
 }
-// Fleiß (Übezeiten) eines Faches in %: Summe aller Minuten (inkl. Ferienwochen als Bonus)
-// geteilt durch (Ziel × Anzahl Nicht-Ferien-Wochen), gedeckelt auf 100 %.
-// So kompensieren in Ferien nachgeholte Minuten Defizite normaler Wochen.
+// Fleiß (Übezeiten) eines Faches in %: Summe der Minuten (pro Woche gedeckelt auf
+// FLEISS_WEEK_CAP, inkl. Ferienwochen als Bonus) geteilt durch (Ziel × Anzahl
+// Nicht-Ferien-Wochen), gedeckelt auf 100 %. Der Wochen-Cap verhindert, dass eine
+// einzelne Woche mit sehr viel Übezeit beliebig viele andere Wochen ausgleicht –
+// pro Woche zählt höchstens ein definierter Bonus über das Ziel hinaus.
+const FLEISS_WEEK_CAP = PRACTICE_TARGET + 10;
 function fleissAvg(pid, subjectKey){
   if(!SUBJECTS.some(s=>s.key===subjectKey)) return null;
   const rows = cache.practice.filter(r=>r.person_id===pid);
   let total=0, normalWeeks=0;
-  rows.forEach(r=>{ total += (+r[subjectKey]||0); if(!r.ferien) normalWeeks++; });
+  rows.forEach(r=>{ total += Math.min(FLEISS_WEEK_CAP, +r[subjectKey]||0); if(!r.ferien) normalWeeks++; });
   if(!normalWeeks) return null;
   return Math.min(100, Math.round(total/(PRACTICE_TARGET*normalWeeks)*100));
 }
@@ -443,9 +446,9 @@ function openHaCell(planId, personId){
 
 // ----- Übezeiten -----
 function practiceCellClass(min){
-  if(min<=5) return 'cell-red';
-  if(min===10) return 'cell-yellow';
-  return 'cell-green';            // 15+
+  if(min<PRACTICE_TARGET/2) return 'cell-red';
+  if(min<PRACTICE_TARGET) return 'cell-yellow';
+  return 'cell-green';
 }
 function gesamtClass(sum){ return sum>=4*PRACTICE_TARGET?'cell-green':sum>=2*PRACTICE_TARGET?'cell-yellow':'cell-red'; }
 function fillPracticeFilters(){
@@ -1416,7 +1419,7 @@ function manageGradeCols(fach){
   const body=`<div id="gcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="gcAppendRow()">+ Spalte</button>
     <div id="gcSum" class="muted" style="margin:6px 0"></div>
-    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Fleiß (Übezeiten)</b> = Schnitt der Übe-Minuten (Ziel 15/Woche), <b>Hausaufgaben Ø</b> = Schnitt aus den Theorie-Treffen, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt als Prozentanteil für „Gesamt %".</p>`;
+    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Fleiß (Übezeiten)</b> = Schnitt der Übe-Minuten (Ziel 30/Woche, max. 40 zählen pro Woche), <b>Hausaufgaben Ø</b> = Schnitt aus den Theorie-Treffen, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt als Prozentanteil für „Gesamt %".</p>`;
   openDialog(`Spalten – ${fach==='harmonielehre'?'Musiktheorie':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#gcList .gc-row')){

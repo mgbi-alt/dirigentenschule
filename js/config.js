@@ -18,7 +18,7 @@ const SUBJECTS = [
 ];
 
 // Ziel pro Fach (Minuten/Woche)
-const PRACTICE_TARGET = 15;
+const PRACTICE_TARGET = 30;
 
 // Bearbeitbare Bereiche (für Lehrer-Rechte, pro Tabelle)
 const EDIT_AREAS = [
