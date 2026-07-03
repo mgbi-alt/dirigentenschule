@@ -347,7 +347,7 @@ async function upsertStatus(taskId, personId, done){
 function haTaskRowHtml(t, personId, manage){
   const done = t && cache.status.find(s=>s.task_id===t.id&&s.person_id===personId)?.erledigt;
   const desc = manage
-    ? `<input class="ha-desc" value="${t?esc(t.bezeichnung):''}" placeholder="Beschreibung der Aufgabe">`
+    ? `<textarea class="ha-desc ta" rows="2" placeholder="Beschreibung der Aufgabe">${t?esc(t.bezeichnung):''}</textarea>`
     : `<span class="ha-desc-text">${t?esc(t.bezeichnung):''}</span>`;
   const del = manage?`<button type="button" class="btn-ghost ha-del" title="Aufgabe löschen">✕</button>`:'';
   return `<div class="ha-task" data-id="${t?t.id:''}">
