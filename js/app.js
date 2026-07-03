@@ -111,8 +111,7 @@ function applyRoleFlags(){
   $('#ptAddBtn').hidden = !currentPerson;
   $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
-  $('#ttNewPlanBtn').hidden = !canEdit('stundenplan');
-  $('#ttTimesBtn').hidden = !canEdit('stundenplan');
+  $('#ttTimesBtn').hidden = !isAdmin;   // „Zeiten" nur für Admin
   // Lehrer/Schüler standardmäßig „Mein Plan", Admin „Gesamtplan"
   const tv=$('#ttView'); if(tv) tv.value = isAdmin ? 'all' : 'mine';
 }
@@ -804,10 +803,12 @@ function renderStundenplan(){
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
   const diffMode = !!(base && planId!==base.id);
-  $('#ttResetBtn').hidden = !(isAdmin && edit && diffMode);
   const planTage=(plan&&plan.tage)||'fr_sa';
   const availDays = planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag'];
   if(!availDays.includes(ttSelectedDay)) ttSelectedDay=availDays[0];
+  const resetBtn=$('#ttResetBtn');
+  resetBtn.hidden = !(isAdmin && edit && diffMode);
+  if(!resetBtn.hidden) resetBtn.textContent = '↩ '+(ttSelectedDay==='freitag'?'Freitag':'Samstag')+' auf Grundplan zurücksetzen';
   renderDayButtons(availDays);
   const tt=$('#ttTitle'); if(tt) tt.textContent = 'Stundenplan' + (plan? ' · '+plan.name+(plan.datum?` (${treffenDateLabel(plan)})`:'') : '');
   if(view==='mine' && !token){
@@ -895,15 +896,17 @@ async function createTreffen(name, datum, tage){
   }
   cache.plans.push(plan); return plan;
 }
-// Kompletter Reset: alle Stundenplan-Zeilen eines abgeleiteten Plans löschen und frisch aus dem Grundplan ableiten.
+// Reset des aktuell gewählten Tages (Freitag ODER Samstag): Zeilen dieses Tages
+// im abgeleiteten Plan löschen und frisch aus dem Grundplan ableiten.
 async function resetPlanToBase(planId){
   const base=basePlan(); const plan=cache.plans.find(p=>p.id===planId);
   if(!base||!plan||plan.is_base){ toast('Nur für abgeleitete Pläne möglich','err'); return; }
-  if(!confirm(`Den kompletten Stundenplan von „${plan.name}" auf den Grundplan zurücksetzen?\n\nAlle manuellen Änderungen am Stundenplan dieses Treffens (Vertretungen, verschobene, entfallene oder neue Stunden) gehen verloren. Abmeldungen von Personen bleiben erhalten.`)) return;
-  const {error:delErr}=await SB.from('timetable').delete().eq('plan_id',planId);
+  const tag=ttSelectedDay, tagLabel=tag==='freitag'?'Freitag':'Samstag';
+  if(!confirm(`Den ${tagLabel}-Stundenplan von „${plan.name}" auf den Grundplan zurücksetzen?\n\nAlle manuellen Änderungen am ${tagLabel} dieses Treffens (Vertretungen, verschobene, entfallene oder neue Stunden) gehen verloren. Abmeldungen von Personen bleiben erhalten.`)) return;
+  const {error:delErr}=await SB.from('timetable').delete().eq('plan_id',planId).eq('tag',tag);
   if(delErr){ toast(delErr.message,'err'); return; }
-  cache.tt=cache.tt.filter(r=>r.plan_id!==planId);
-  const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:planId, tag:r.tag, zeit:r.zeit,
+  cache.tt=cache.tt.filter(r=>!(r.plan_id===planId && r.tag===tag));
+  const copies=cache.tt.filter(r=>r.plan_id===base.id && r.tag===tag).map(r=>({plan_id:planId, tag:r.tag, zeit:r.zeit,
     zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
     lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort,
     source_id:r.id}));
@@ -912,16 +915,7 @@ async function resetPlanToBase(planId){
     if(error){ toast(error.message,'err'); return; }
     cache.tt.push(...(data||[]));
   }
-  renderStundenplan(); toast('Stundenplan auf Grundplan zurückgesetzt');
-}
-function copyPlan(){
-  openDialog('Neuen Plan anlegen (Kopie Grundplan)', `<label>Name<input id="cp_name" placeholder="z.B. Treffen 14.06.2026"></label>
-    <label>Datum<input type="date" id="cp_datum"></label>
-    <p class="muted">Erstellt eine Kopie des Grundplans, die du anpassen kannst (Vertretung/Ausfall).</p>`, async()=>{
-    const name=$('#cp_name').value.trim(); if(!name){ toast('Name fehlt','err'); return false; }
-    const plan=await createTreffen(name, $('#cp_datum').value); if(!plan) return false;
-    fillPlanSelect(); $('#ttPlan').value=plan.id; renderStundenplan(); toast('Plan angelegt');
-  });
+  renderStundenplan(); toast(`${tagLabel}-Stundenplan auf Grundplan zurückgesetzt`);
 }
 function renderTreffen(){
   const list=cache.plans.filter(p=>!p.is_base)
@@ -1601,7 +1595,6 @@ function bind(){
   $('#ptAddBtn').onclick=createPractice;
   $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
-  $('#ttNewPlanBtn').onclick=copyPlan;
   $('#ttResetBtn').onclick=()=>resetPlanToBase(currentPlanId());
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
