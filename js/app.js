@@ -738,7 +738,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
       c.raum?`<div class="tt-room"><s>R: ${esc(c.raum)}</s></div>`:'',
     ].filter(Boolean);
     const pad=c.ueber?5:4; while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
-    return `<div class="tt-cell tt-removed"><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
+    return `<div class="tt-cell tt-removed ${edit?'editable':''}" ${edit?`onclick="adoptBaseLesson('${r.id}','${planId}')" title="Neue Grundplan-Stunde in diesen Treffen-Plan übernehmen"`:''}><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
   };
   const subjectsHtml=(planRows,removedRows)=>{
     const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
@@ -792,7 +792,7 @@ function renderStundenplan(){
   const dayDiff = diffMode && day==='samstag';   // Freitag wird nicht gegen den Grundplan verglichen
   const res=buildDayHtml(day, planId, base, view, edit, token, dayDiff);
   let banner='';
-  if(dayDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).</p>`;
+  if(dayDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).${edit?' Veraltete Abweichung? Stunde öffnen → „Auf Grundplan zurücksetzen"; „entfällt"-Stunde anklicken zum Übernehmen.':''}</p>`;
   if(edit && res.conflicts.length) banner+=`<div class="tt-conflicts"><b>⚠ ${res.conflicts.length} Konflikt(e):</b><ul>${res.conflicts.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></div>`;
   $('#ttGrid').innerHTML = banner + (res.html || '<p class="muted" style="padding:6px 0">– keine Einträge –</p>');
 }
@@ -1090,7 +1090,13 @@ function slotSortFor(zeit){
 }
 function editLesson(id){
   const r=cache.tt.find(x=>x.id===id); if(!r) return;
-  let body=lessonForm(r)+`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
+  const base=basePlan();
+  const baseR=(base && r.plan_id!==base.id && r.source_id) ? cache.tt.find(x=>x.id===r.source_id) : null;
+  const differsFromBase = !!baseR && (()=>{ const c=lessonFields(r), b=lessonFields(baseR);
+    return ['ueber','stu','leh','kla','raum'].some(k=>(c[k]||'')!==(b[k]||'')); })();
+  let body=lessonForm(r)
+    +(differsFromBase?`<button type="button" class="btn-ghost" style="margin-top:4px" onclick="resetLessonToBase('${id}')" title="Veraltete Kopie: Werte des Grundplans übernehmen">↩ Auf Grundplan zurücksetzen</button>`:'')
+    +`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
   openDialog('Stundenplan-Eintrag', body, async()=>{
     const upd=readLessonForm(); upd.zeit_sort=slotSortFor(upd.zeit); upd.updated_at=new Date().toISOString();
     await ensureRoom(upd.raum);
@@ -1117,6 +1123,30 @@ async function delLesson(id){
   const {error}=await SB.from('timetable').delete().eq('id',id);
   if(error){ toast(error.message,'err'); return; }
   cache.tt=cache.tt.filter(x=>x.id!==id); closeDialog(); renderStundenplan(); toast('Gelöscht');
+}
+// Veraltete Kopie einer abgeleiteten Stunde auf den aktuellen Grundplan-Stand bringen (echte Vertretungen bleiben unberührt).
+async function resetLessonToBase(id){
+  const r=cache.tt.find(x=>x.id===id); if(!r||!r.source_id) return;
+  const b=cache.tt.find(x=>x.id===r.source_id);
+  if(!b){ toast('Zugehörige Grundplan-Stunde nicht gefunden','err'); return; }
+  const upd={ tag:b.tag, zeit:b.zeit, zeit_sort:b.zeit_sort, fach:b.fach, ueberschrift:b.ueberschrift,
+    schueler:b.schueler, schueler_ids:b.schueler_ids, lehrer:b.lehrer, lehrer_ids:b.lehrer_ids,
+    klavier:b.klavier, klavier_ids:b.klavier_ids, raum:b.raum, sort:b.sort, entfaellt:false,
+    updated_at:new Date().toISOString() };
+  const {error}=await SB.from('timetable').update(upd).eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  Object.assign(r,upd); closeDialog(); renderStundenplan(); toast('Auf Grundplan zurückgesetzt');
+}
+// Neue Grundplan-Stunde (im Treffen noch nicht vorhanden) in den abgeleiteten Plan übernehmen.
+async function adoptBaseLesson(baseId, planId){
+  const b=cache.tt.find(x=>x.id===baseId); if(!b) return;
+  if(!confirm('Diese Grundplan-Stunde in den Treffen-Plan übernehmen?')) return;
+  const rec={ plan_id:planId, tag:b.tag, zeit:b.zeit, zeit_sort:b.zeit_sort, fach:b.fach, ueberschrift:b.ueberschrift,
+    schueler:b.schueler, schueler_ids:b.schueler_ids, lehrer:b.lehrer, lehrer_ids:b.lehrer_ids,
+    klavier:b.klavier, klavier_ids:b.klavier_ids, raum:b.raum, sort:b.sort, source_id:b.id };
+  const {data,error}=await SB.from('timetable').insert(rec).select().single();
+  if(error){ toast(error.message,'err'); return; }
+  cache.tt.push(data); renderStundenplan(); toast('Übernommen');
 }
 
 // ---------- BEWERTUNGEN ----------
