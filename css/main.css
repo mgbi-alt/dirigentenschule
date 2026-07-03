@@ -135,11 +135,11 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .task-row input{width:16px;height:16px;accent-color:var(--accent)}
 .task-row .w{margin-left:auto;color:var(--text3);font-size:12px}
 /* Hausaufgaben-Popup (Aufgaben je Schüler/Treffen) */
-.ha-task{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
-.ha-task input.ha-done{width:18px;height:18px;margin-top:2px;accent-color:var(--accent);flex:0 0 auto}
-.ha-task textarea.ha-desc{flex:1;min-width:0;margin-bottom:0;min-height:42px;line-height:1.4}
-.ha-task .ha-desc-text{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;padding-top:1px}
-.ha-task .ha-del{flex:0 0 auto;margin-top:1px;padding:2px 9px}
+.ha-task{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;column-gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+.ha-task input.ha-done{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}
+.ha-task textarea.ha-desc{width:100%;min-width:0;margin:0;min-height:42px;line-height:1.4;resize:vertical}
+.ha-task .ha-desc-text{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;padding-top:2px}
+.ha-task .ha-del{align-self:start;margin-top:1px;padding:2px 9px}
 
 /* ---- Contacts ---- */
 .contacts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
