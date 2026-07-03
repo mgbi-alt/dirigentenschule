@@ -88,14 +88,20 @@ async function uploadFile(file, prefix){
 }
 
 // ---------- Auth ----------
+// Wird direkt beim Laden ausgewertet (Reset-Link enthält #...&type=recovery bzw. ?...&type=recovery),
+// damit wir die Erkennung nicht dem PASSWORD_RECOVERY-Event überlassen müssen – das kommt teils zu
+// spät (nach der ersten getSession()/afterSession()) und die App würde sonst kurz normal einloggen.
+const IS_PASSWORD_RECOVERY = /(^|[?#&])type=recovery(&|$)/.test(location.hash) || /(^|[?#&])type=recovery(&|$)/.test(location.search);
+let inPasswordRecovery = IS_PASSWORD_RECOVERY;
 async function initAuth(){
+  if(inPasswordRecovery) showPasswordResetGate();
   const { data } = await SB.auth.getSession();
   session = data.session;
-  await afterSession();
+  if(!inPasswordRecovery) await afterSession();
   SB.auth.onAuthStateChange((e,s)=>{
     session=s;
-    if(e==='PASSWORD_RECOVERY'){ showPasswordResetGate(); return; }
-    afterSession();
+    if(e==='PASSWORD_RECOVERY'){ inPasswordRecovery=true; showPasswordResetGate(); return; }
+    if(!inPasswordRecovery) afterSession();
   });
 }
 // Passwort-Regeln: mind. 8 Zeichen, Groß-/Kleinbuchstabe, Zahl, Sonderzeichen
@@ -130,6 +136,8 @@ async function savePasswordReset(){
   const { error } = await SB.auth.updateUser({ password: pw });
   $('#pwrSaveBtn').disabled=false;
   if(error){ $('#pwrErr').textContent=error.message; return; }
+  inPasswordRecovery=false;
+  history.replaceState(null,'',location.pathname);
   $('#pwResetGate').hidden=true;
   toast('Passwort gespeichert.');
   applyAuthGate();
