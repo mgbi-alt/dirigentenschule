@@ -303,6 +303,17 @@ function hausaufgabenAvg(pid){
   const vals = cache.meetings.map(m=>meetingPercent(m.id,pid)).filter(v=>v!=null);
   return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
 }
+// Fleiß (Übezeiten) eines Faches in %: Summe aller Minuten (inkl. Ferienwochen als Bonus)
+// geteilt durch (Ziel × Anzahl Nicht-Ferien-Wochen), gedeckelt auf 100 %.
+// So kompensieren in Ferien nachgeholte Minuten Defizite normaler Wochen.
+function fleissAvg(pid, subjectKey){
+  if(!SUBJECTS.some(s=>s.key===subjectKey)) return null;
+  const rows = cache.practice.filter(r=>r.person_id===pid);
+  let total=0, normalWeeks=0;
+  rows.forEach(r=>{ total += (+r[subjectKey]||0); if(!r.ferien) normalWeeks++; });
+  if(!normalWeeks) return null;
+  return Math.min(100, Math.round(total/(PRACTICE_TARGET*normalWeeks)*100));
+}
 // Das zu einem allgemeinen Treffen (plan) gehörende Theorie-Treffen
 function meetingForPlan(planId){ return cache.meetings.find(m=>m.plan_id===planId); }
 function renderTheory(){
@@ -1245,20 +1256,21 @@ function testsAvg(fach, pid){
 function ihkNote(p){ if(p==null)return ''; if(p>=92)return'1'; if(p>=81)return'2'; if(p>=67)return'3'; if(p>=50)return'4'; if(p>=30)return'5'; return'6'; }
 function gesamtPct(g, fach, pid){
   let ws=0, sum=0;
-  gradeColsFor(fach).filter(c=>(c.typ==='manual'||c.typ==='tests'||c.typ==='hausaufgaben')&&(+c.gewicht||0)>0).forEach(c=>{
-    const v=c.typ==='tests'?testsAvg(fach,pid):c.typ==='hausaufgaben'?hausaufgabenAvg(pid):gradeVal(g,c);
+  gradeColsFor(fach).filter(c=>(c.typ==='manual'||c.typ==='tests'||c.typ==='hausaufgaben'||c.typ==='fleiss')&&(+c.gewicht||0)>0).forEach(c=>{
+    const v=c.typ==='tests'?testsAvg(fach,pid):c.typ==='hausaufgaben'?hausaufgabenAvg(pid):c.typ==='fleiss'?fleissAvg(pid,fach):gradeVal(g,c);
     if(v!=null){ const w=+c.gewicht||0; sum+=w*(+v); ws+=w; }
   });
   return ws>0?Math.round(sum/ws):null;
 }
 function colValue(g, col, fach, pid){
   if(col.typ==='tests')  return testsAvg(fach,pid);
+  if(col.typ==='fleiss') return fleissAvg(pid,fach);
   if(col.typ==='hausaufgaben') return hausaufgabenAvg(pid);
   if(col.typ==='gesamt') return gesamtPct(g,fach,pid);
   if(col.typ==='note'){ const p=gesamtPct(g,fach,pid); return p==null?null:ihkNote(p); }
   return gradeVal(g,col);
 }
-function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['hausaufgaben','Hausaufgaben Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
+function gradeTypOpts(sel){ return [['manual','Eingabe'],['tests','Tests-Ø'],['fleiss','Fleiß (Übezeiten)'],['hausaufgaben','Hausaufgaben Ø'],['gesamt','Gesamt %'],['note','Note (IHK)']]
   .map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join(''); }
 // --- Test-Spalten-Verwaltung ---
 // Options-HTML aller Treffen (plans, is_base=false), chronologisch.
@@ -1358,10 +1370,20 @@ function editGrade(personId, fach){
 function gcAppendRow(){
   const wrap=document.createElement('div'); wrap.className='gc-row';
   wrap.innerHTML=`<input class="gc-label" placeholder="Neue Spalte">
-    <select class="gc-typ">${gradeTypOpts('manual')}</select>
-    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="1" title="Gewicht">
-    <button type="button" class="btn-ghost" onclick="this.parentElement.remove()">✕</button>`;
-  $('#gcList').appendChild(wrap);
+    <select class="gc-typ" onchange="updateGcSum()">${gradeTypOpts('manual')}</select>
+    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="1" title="Gewicht" oninput="updateGcSum()">
+    <button type="button" class="btn-ghost" onclick="this.parentElement.remove();updateGcSum()">✕</button>`;
+  $('#gcList').appendChild(wrap); updateGcSum();
+}
+// Summe der Gewichte (nur Spalten, die in „Gesamt %" zählen); warnt, wenn ≠ 100 %.
+function updateGcSum(){
+  const el=$('#gcSum'); if(!el) return;
+  const contrib=new Set(['manual','tests','fleiss','hausaufgaben']);
+  let sum=0; $$('#gcList .gc-row').forEach(r=>{ const typ=$('.gc-typ',r)?.value||'manual';
+    if(contrib.has(typ)) sum+=(parseNum($('.gc-gew',r)?.value)||0); });
+  const rounded=Math.round(sum*10)/10, ok=Math.abs(sum-100)<0.05;
+  el.innerHTML=`Summe der Gewichte (zählt für „Gesamt %"): <b>${rounded} %</b>`
+    + (ok?' ✓':` <span style="color:var(--err)">– sollte 100 % ergeben</span>`);
 }
 async function delGradeCol(id){
   if(!confirm('Spalte löschen? Die Werte dieser Spalte gehen verloren.')) return;
@@ -1369,19 +1391,20 @@ async function delGradeCol(id){
   if(error){ toast(error.message,'err'); return; }
   cache.gradeCols=cache.gradeCols.filter(c=>c.id!==id);
   document.querySelector(`#gcList .gc-row[data-id="${id}"]`)?.remove();
-  toast('Spalte gelöscht');
+  updateGcSum(); toast('Spalte gelöscht');
 }
 function manageGradeCols(fach){
   const cols=gradeColsFor(fach);
   const rowsHtml=cols.map(c=>`<div class="gc-row" data-id="${c.id}">
     <input class="gc-label" value="${esc(c.label)}">
-    <select class="gc-typ">${gradeTypOpts(c.typ||'manual')}</select>
-    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="${c.gewicht??1}" title="Gewicht">
+    <select class="gc-typ" onchange="updateGcSum()">${gradeTypOpts(c.typ||'manual')}</select>
+    <input class="gc-gew" type="number" step="0.1" style="width:58px" value="${c.gewicht??1}" title="Gewicht" oninput="updateGcSum()">
     <button type="button" class="btn-ghost" onclick="delGradeCol('${c.id}')">✕</button>
   </div>`).join('');
   const body=`<div id="gcList">${rowsHtml}</div>
     <button type="button" class="btn-ghost" onclick="gcAppendRow()">+ Spalte</button>
-    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Hausaufgaben Ø</b> = Schnitt aus den Theorie-Treffen, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt für „Gesamt %".</p>`;
+    <div id="gcSum" class="muted" style="margin:6px 0"></div>
+    <p class="muted">Typ: <b>Eingabe</b> = manuell, <b>Tests-Ø</b> = Mittel der 5-Min-Tests, <b>Fleiß (Übezeiten)</b> = Schnitt der Übe-Minuten (Ziel 15/Woche), <b>Hausaufgaben Ø</b> = Schnitt aus den Theorie-Treffen, <b>Gesamt %</b> = gewichteter Schnitt, <b>Note (IHK)</b> = aus Gesamt. „Gewicht" zählt als Prozentanteil für „Gesamt %".</p>`;
   openDialog(`Spalten – ${fach==='harmonielehre'?'Musiktheorie':'Gehörbildung'}`, body, async()=>{
     let sort=0;
     for(const el of $$('#gcList .gc-row')){
@@ -1394,6 +1417,7 @@ function manageGradeCols(fach){
     }
     await loadAll(); renderBewertung(); toast('Spalten gespeichert');
   });
+  updateGcSum();
 }
 
 // ---------- ADMIN ----------
