@@ -89,11 +89,8 @@
     <div class="subpage active" id="sub-theorie">
       <div class="toolbar">
         <h2 class="section-h">Hausaufgaben Musiktheorie</h2>
-        <button class="btn-primary" id="newMeetingBtn" hidden>+ Neues Treffen</button>
       </div>
-      <p class="muted">Aufgabenbeschreibung & Begleitdokumente herunterladen und erledigte Aufgaben abhaken.</p>
-      <div id="theoryMeetings" class="meeting-grid"></div>
-      <h3 class="section-h">Übersicht – wer hat erledigt? (in %)</h3>
+      <div id="theoryMeetings"></div>
       <div class="table-wrap" id="theoryMatrix"></div>
     </div>
 
@@ -199,21 +196,6 @@
   </section>
 
 </main>
-
-<!-- ========== TREFFEN MODAL ========== -->
-<div class="modal" id="meetingModal" hidden>
-  <div class="modal-box wide">
-    <h3 id="meetingModalTitle">Neues Treffen</h3>
-    <label>Datum <input type="date" id="mDatum"></label>
-    <label>Titel <input type="text" id="mTitel" placeholder="z.B. Treffen Mai"></label>
-    <label>Aufgaben (eine pro Zeile, Format: <em>Bezeichnung | Gewicht%</em>)</label>
-    <textarea id="mTasks" rows="6" class="ta" placeholder="Aufgabe 1 | 50&#10;Aufgabe 2 | 50"></textarea>
-    <div class="modal-actions">
-      <button class="btn-ghost" id="meetingCancel">Abbrechen</button>
-      <button class="btn-primary" id="meetingSave">Speichern</button>
-    </div>
-  </div>
-</div>
 
 <!-- ========== GENERISCHER DIALOG ========== -->
 <div class="modal" id="dlg" hidden>

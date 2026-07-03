@@ -105,7 +105,7 @@ function applyRoleFlags(){
   isStaff = isAdmin || hasRole(currentPerson,'lehrer') || hasRole(currentPerson,'klassenleitung');
   seesAll = isStaff;
   $$('.admin-only').forEach(el=>el.hidden=!isAdmin);
-  $('#newMeetingBtn').hidden = !canEdit('theorie');
+  // „Neues Treffen" entfällt: Hausaufgaben-Treffen leiten sich aus den allgemeinen Treffen ab.
   $('#annNewBtn').hidden = !canEdit('infos');
   $('#absNewBtn').hidden = !canEdit('abmeldungen');
   $('#ptAddBtn').hidden = !currentPerson;
@@ -303,56 +303,129 @@ function hausaufgabenAvg(pid){
   const vals = cache.meetings.map(m=>meetingPercent(m.id,pid)).filter(v=>v!=null);
   return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
 }
+// Das zu einem allgemeinen Treffen (plan) gehörende Theorie-Treffen
+function meetingForPlan(planId){ return cache.meetings.find(m=>m.plan_id===planId); }
 function renderTheory(){
-  // Treffen-Karten mit Download + Abhaken
-  $('#theoryMeetings').innerHTML = cache.meetings.length ? cache.meetings.map(m=>{
-    const docs=(m.dokumente||[]);
-    const links = [
-      m.beschreibung_url?`<a class="dl-link" href="${esc(m.beschreibung_url)}" target="_blank">⬇ Aufgaben</a>`:'',
-      ...docs.map(d=>`<a class="dl-link" href="${esc(d.url)}" target="_blank">⬇ ${esc(d.name||'PDF')}</a>`)
-    ].join('');
-    const tasks = cache.tasks.filter(t=>t.meeting_id===m.id);
-    const taskRows = tasks.map(t=>{
-      const st = currentPerson && cache.status.find(s=>s.task_id===t.id&&s.person_id===currentPerson.id);
-      const checked = st?.erledigt?'checked':'';
-      const dis = currentPerson?'':'disabled';
-      return `<label class="task-row"><input type="checkbox" ${checked} ${dis}
-        onchange="toggleTask('${t.id}',this.checked)"> ${esc(t.bezeichnung)}
-        <span class="w">${+t.gewicht||0}%</span></label>`;
-    }).join('');
-    const pct = currentPerson?meetingPercent(m.id,currentPerson.id):null;
-    return `<div class="meeting-card">
-      <h4>${esc(m.titel||'Treffen')} ${pct!=null?`<span class="role-pill">${pct}%</span>`:''}</h4>
-      <div class="date">${fmtDateOpt(m.datum)}</div>
-      <div class="dl-links">${links||'<span class="muted">Keine Dateien</span>'}</div>
-      ${taskRows||'<p class="muted">Keine Aufgaben</p>'}
-    </div>`;
-  }).join('') : '<p class="muted">Noch keine Treffen angelegt.</p>';
+  const treffen = cache.plans.filter(p=>!p.is_base)
+    .sort((a,b)=>(a.datum||'').localeCompare(b.datum||'') || ((a.sort||0)-(b.sort||0)));
+  const edit = canEdit('theorie');
 
-  // Matrix: Zeilen Schüler, Spalten Treffen, % erledigt + Ø
-  const ms=cache.meetings;
-  const head = `<tr><th class="name">Schüler</th>${ms.map(m=>
-    `<th>${esc(m.titel||fmtDate(m.datum))}<br><span class="muted">${fmtDateOpt(m.datum)}</span></th>`).join('')}
+  $('#theoryMeetings').innerHTML = `<p class="muted">${edit
+    ? 'Auf eine Zelle klicken, um für ein Treffen die Aufgaben eines Schülers einzutragen. Neue Aufgaben (mit Beschreibung) legst du direkt im Popup an – sie gelten für alle Schüler dieses Treffens.'
+    : 'Auf deine Zelle klicken, um deine erledigten Aufgaben je Treffen abzuhaken.'}</p>`;
+
+  if(!treffen.length){
+    $('#theoryMatrix').innerHTML='<p class="muted" style="padding:14px">Noch keine Treffen angelegt. Treffen werden im Admin-Bereich verwaltet.</p>';
+    return;
+  }
+  const head = `<tr><th class="name">Schüler</th>${treffen.map(t=>
+    `<th>${esc(t.name||'Treffen')}<br><span class="muted">${esc(treffenDateLabel(t))}</span></th>`).join('')}
     <th class="sum">Ø Gesamt</th></tr>`;
   const rows = visibleStudents().map(p=>{
-    const vals = ms.map(m=>meetingPercent(m.id,p.id));
-    const known = vals.filter(v=>v!=null);
-    const avg = known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
-    return `<tr><td class="name">${esc(fullName(p))}</td>${vals.map(v=>
-      `<td>${v==null?'–':v+'%'}</td>`).join('')}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
+    const mayRow = edit || (currentPerson && currentPerson.id===p.id);
+    const vals=[];
+    const cells = treffen.map(t=>{
+      const m=meetingForPlan(t.id);
+      const v=m?meetingPercent(m.id,p.id):null; vals.push(v);
+      return `<td class="${mayRow?'cell-edit':''}" ${mayRow?`onclick="openHaCell('${t.id}','${p.id}')"`:''}>${v==null?'–':v+'%'}</td>`;
+    }).join('');
+    const known=vals.filter(v=>v!=null);
+    const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
+    return `<tr><td class="name">${esc(fullName(p))}</td>${cells}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
   }).join('');
-  $('#theoryMatrix').innerHTML = ms.length
-    ? `<table>${head}${rows}</table>` : '<p class="muted" style="padding:14px">Keine Daten.</p>';
+  $('#theoryMatrix').innerHTML = `<table>${head}${rows}</table>`;
 }
-async function toggleTask(taskId, val){
-  if(!currentPerson) return;
+async function upsertStatus(taskId, personId, done){
   const { error } = await SB.from('theory_status')
-    .upsert({task_id:taskId, person_id:currentPerson.id, erledigt:val, updated_at:new Date().toISOString()},
+    .upsert({task_id:taskId, person_id:personId, erledigt:done, updated_at:new Date().toISOString()},
             {onConflict:'task_id,person_id'});
-  if(error){ toast(error.message,'err'); return; }
-  const ex=cache.status.find(s=>s.task_id===taskId&&s.person_id===currentPerson.id);
-  if(ex) ex.erledigt=val; else cache.status.push({task_id:taskId,person_id:currentPerson.id,erledigt:val});
-  renderTheory(); toast('Gespeichert');
+  if(error){ toast(error.message,'err'); return false; }
+  const ex=cache.status.find(s=>s.task_id===taskId&&s.person_id===personId);
+  if(ex) ex.erledigt=done; else cache.status.push({task_id:taskId,person_id:personId,erledigt:done});
+  return true;
+}
+function haTaskRowHtml(t, personId, manage){
+  const done = t && cache.status.find(s=>s.task_id===t.id&&s.person_id===personId)?.erledigt;
+  const desc = manage
+    ? `<input class="ha-desc" value="${t?esc(t.bezeichnung):''}" placeholder="Beschreibung der Aufgabe">`
+    : `<span class="ha-desc-text">${t?esc(t.bezeichnung):''}</span>`;
+  const del = manage?`<button type="button" class="btn-ghost ha-del" title="Aufgabe löschen">✕</button>`:'';
+  return `<div class="ha-task" data-id="${t?t.id:''}">
+    <input type="checkbox" class="ha-done" ${done?'checked':''}>${desc}${del}</div>`;
+}
+// Popup: Aufgaben eines Schülers für ein Treffen eintragen (Schüler nur eigene; Admin/Lehrer alle + Aufgaben verwalten)
+function openHaCell(planId, personId){
+  const plan = cache.plans.find(p=>p.id===planId);
+  const person = personById(personId);
+  if(!plan||!person) return;
+  const manage = canEdit('theorie');
+  const mayEdit = manage || (currentPerson && currentPerson.id===personId);
+  if(!mayEdit){ toast('Keine Berechtigung','err'); return; }
+  let meeting = meetingForPlan(planId);
+  const tasks = meeting ? cache.tasks.filter(t=>t.meeting_id===meeting.id).sort((a,b)=>((a.sort||0)-(b.sort||0))) : [];
+  const listHtml = tasks.map(t=>haTaskRowHtml(t,personId,manage)).join('');
+
+  const body = `<div id="haTasks">${listHtml||(manage?'':'<p class="muted" id="haEmpty">Für dieses Treffen wurden noch keine Aufgaben angelegt.</p>')}</div>
+    ${manage
+      ? `<button type="button" class="btn-ghost" id="haAdd">+ Aufgabe</button>
+         <p class="muted">Der Haken markiert die Erledigung für <b>${esc(fullName(person))}</b>. Aufgaben gelten für alle Schüler dieses Treffens.</p>`
+      : `<p class="muted">Setze den Haken bei den Aufgaben, die du erledigt hast.</p>`}`;
+
+  openDialog(`${esc(fullName(person))} · ${esc(plan.name||'Treffen')}${treffenDateLabel(plan)?' · '+esc(treffenDateLabel(plan)):''}`, body, async()=>{
+    const rowsEls = $$('#haTasks .ha-task');
+    if(manage){
+      const active = rowsEls.filter(el=>el.dataset.del!=='1' && ($('.ha-desc',el)?.value||'').trim());
+      if(!meeting && active.length){
+        const {data,error}=await SB.from('theory_meetings')
+          .insert({plan_id:planId, datum:plan.datum||'1900-01-01', titel:plan.name||'Treffen', sort:0}).select().single();
+        if(error){ toast(error.message,'err'); return false; }
+        meeting=data; cache.meetings.push(data);
+      }
+      let sort=0;
+      for(const el of rowsEls){
+        const id=el.dataset.id;
+        if(el.dataset.del==='1'){
+          if(id){ await SB.from('theory_tasks').delete().eq('id',id);
+            cache.tasks=cache.tasks.filter(t=>t.id!==id);
+            cache.status=cache.status.filter(s=>s.task_id!==id); }
+          continue;
+        }
+        const descv=($('.ha-desc',el)?.value||'').trim(); if(!descv) continue;
+        sort+=1; const done=$('.ha-done',el)?.checked;
+        let taskId=id;
+        if(taskId){
+          await SB.from('theory_tasks').update({bezeichnung:descv,sort}).eq('id',taskId);
+          const ct=cache.tasks.find(t=>t.id===taskId); if(ct){ct.bezeichnung=descv; ct.sort=sort;}
+        } else {
+          const {data,error}=await SB.from('theory_tasks').insert({meeting_id:meeting.id,bezeichnung:descv,gewicht:1,sort}).select().single();
+          if(error){ toast(error.message,'err'); return false; }
+          taskId=data.id; cache.tasks.push(data);
+        }
+        if(!(await upsertStatus(taskId, personId, !!done))) return false;
+      }
+    } else {
+      for(const el of rowsEls){
+        const taskId=el.dataset.id; if(!taskId) continue;
+        if(!(await upsertStatus(taskId, personId, !!$('.ha-done',el)?.checked))) return false;
+      }
+    }
+    renderTheory(); renderBewertung(); toast('Gespeichert');
+  });
+
+  // Handler nach dem Rendern binden (Aufgabe hinzufügen / löschen)
+  if(manage){
+    const add=$('#haAdd');
+    if(add) add.onclick=()=>{
+      $('#haEmpty')?.remove();
+      $('#haTasks').insertAdjacentHTML('beforeend', haTaskRowHtml(null, personId, true));
+      $('#haTasks .ha-task:last-child .ha-desc')?.focus();
+    };
+    $('#haTasks').addEventListener('click', e=>{
+      const b=e.target.closest('.ha-del'); if(!b) return;
+      const row=b.closest('.ha-task');
+      if(row.dataset.id){ row.dataset.del='1'; row.style.display='none'; } else row.remove();
+    });
+  }
 }
 
 // ----- Übezeiten -----
@@ -1386,19 +1459,6 @@ async function rteFilePicked(file){
   saveSel();
 }
 
-// ---------- TREFFEN anlegen ----------
-async function saveMeeting(){
-  const datum=$('#mDatum').value; if(!datum){ toast('Datum fehlt','err'); return; }
-  const titel=$('#mTitel').value.trim();
-  const { data, error } = await SB.from('theory_meetings').insert({datum,titel,sort:cache.meetings.length}).select().single();
-  if(error){ toast(error.message,'err'); return; }
-  const lines=$('#mTasks').value.split('\n').map(l=>l.trim()).filter(Boolean);
-  const tasks=lines.map((l,i)=>{ const [b,w]=l.split('|'); return {meeting_id:data.id,bezeichnung:(b||'').trim(),gewicht:parseNum(w)||0,sort:i}; });
-  if(tasks.length) await SB.from('theory_tasks').insert(tasks);
-  $('#meetingModal').hidden=true; $('#mTitel').value=''; $('#mTasks').value='';
-  await loadAll(); renderTheory(); toast('Treffen gespeichert');
-}
-
 // ---------- Events ----------
 function bind(){
   $$('.nav-btn').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
@@ -1419,9 +1479,6 @@ function bind(){
   $$('.grades-cols-btn').forEach(b=>b.onclick=()=>manageGradeCols(b.dataset.fach));
   $$('.tests-cols-btn').forEach(b=>b.onclick=()=>manageTestCols(b.dataset.fach));
   ['#ptYear','#ptWeek','#ptStudent'].forEach(s=>$(s).onchange=renderPractice);
-  $('#newMeetingBtn').onclick=()=>{ $('#meetingModal').hidden=false; };
-  $('#meetingCancel').onclick=()=>{ $('#meetingModal').hidden=true; };
-  $('#meetingSave').onclick=saveMeeting;
   $('#paSearch').oninput=renderPersonAdmin;
   $('#paAddBtn').onclick=addPersonDialog;
   $('#trAddBtn').onclick=addTreffen;
