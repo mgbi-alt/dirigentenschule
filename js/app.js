@@ -314,6 +314,9 @@ function fleissAvg(pid, subjectKey){
   if(!normalWeeks) return null;
   return Math.min(100, Math.round(total/(PRACTICE_TARGET*normalWeeks)*100));
 }
+// Ampelfarbe für Hausaufgaben-Prozente (wie in der Praktische-Fächer-Tabelle):
+// bis 49 % rot, 50–80 % gelb, über 80 % grün.
+function haCellClass(v){ return v==null?'':(v<50?'cell-red':v<=80?'cell-yellow':'cell-green'); }
 // Das zu einem allgemeinen Treffen (plan) gehörende Theorie-Treffen
 function meetingForPlan(planId){ return cache.meetings.find(m=>m.plan_id===planId); }
 function renderTheory(){
@@ -338,11 +341,11 @@ function renderTheory(){
     const cells = treffen.map(t=>{
       const m=meetingForPlan(t.id);
       const v=m?meetingPercent(m.id,p.id):null; vals.push(v);
-      return `<td class="${mayRow?'cell-edit':''}" ${mayRow?`onclick="openHaCell('${t.id}','${p.id}')"`:''}>${v==null?'–':v+'%'}</td>`;
+      return `<td class="${mayRow?'cell-edit ':''}${haCellClass(v)}" ${mayRow?`onclick="openHaCell('${t.id}','${p.id}')"`:''}>${v==null?'–':v+'%'}</td>`;
     }).join('');
     const known=vals.filter(v=>v!=null);
     const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
-    return `<tr><td class="name">${esc(fullName(p))}</td>${cells}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
+    return `<tr><td class="name">${esc(fullName(p))}</td>${cells}<td class="sum ${haCellClass(avg)}">${avg==null?'–':avg+'%'}</td></tr>`;
   }).join('');
   $('#theoryMatrix').innerHTML = `<table>${head}${rows}</table>`;
 }
@@ -515,7 +518,17 @@ function editPractice(id){
     SUBJECTS.forEach(s=>upd[s.key]=parseInt($('#dp_'+s.key).value)||0);
     const {error}=await SB.from('practice_times').update(upd).eq('id',r.id);
     if(error){ toast(error.message,'err'); return false; }
-    Object.assign(r,upd); renderPractice(); toast('Gespeichert');
+    Object.assign(r,upd);
+    // Ferien gilt für die ganze Woche: Status auf alle Schüler dieser KW übernehmen.
+    if(isAdmin){
+      const fer=upd.ferien;
+      const {error:e2}=await SB.from('practice_times')
+        .update({ferien:fer, updated_at:new Date().toISOString()})
+        .eq('jahr',r.jahr).eq('kw',r.kw);
+      if(e2){ toast(e2.message,'err'); return false; }
+      cache.practice.forEach(x=>{ if(x.jahr===r.jahr && x.kw===r.kw) x.ferien=fer; });
+    }
+    renderPractice(); toast('Gespeichert');
   });
 }
 async function genPracticeWeek(){
