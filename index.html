@@ -23,6 +23,20 @@
     <input type="password" id="gatePass" placeholder="Passwort" autocomplete="current-password">
     <button class="btn-primary" id="gateLogin">Anmelden</button>
     <p class="gate-err" id="gateErr"></p>
+    <button type="button" class="btn-link" id="gateForgotBtn">Passwort vergessen?</button>
+  </div>
+</div>
+
+<!-- ========== NEUES PASSWORT SETZEN (nach Reset-Link) ========== -->
+<div id="pwResetGate" hidden>
+  <div class="gate-card">
+    <h1>Neues Passwort</h1>
+    <p>Bitte vergib ein neues Passwort für deinen Account.</p>
+    <input type="password" id="pwrNew" placeholder="Neues Passwort" autocomplete="new-password">
+    <input type="password" id="pwrNew2" placeholder="Passwort wiederholen" autocomplete="new-password">
+    <p class="muted" style="font-size:.85em">Mind. 8 Zeichen, Groß- und Kleinbuchstabe, Zahl und Sonderzeichen.</p>
+    <button class="btn-primary" id="pwrSaveBtn">Passwort speichern</button>
+    <p class="gate-err" id="pwrErr"></p>
   </div>
 </div>
 
@@ -44,6 +58,7 @@
   <div class="hd-right">
     <span id="viewAsWrap" hidden><select id="viewAs" class="viewas-sel"></select></span>
     <span id="userBadge" class="user-badge"></span>
+    <button id="pwChangeBtn" class="btn-ghost" hidden>Passwort ändern</button>
     <button id="logoutBtn" class="btn-ghost" hidden>Abmelden</button>
   </div>
 </header>

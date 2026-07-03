@@ -92,7 +92,63 @@ async function initAuth(){
   const { data } = await SB.auth.getSession();
   session = data.session;
   await afterSession();
-  SB.auth.onAuthStateChange((_e,s)=>{ session=s; afterSession(); });
+  SB.auth.onAuthStateChange((e,s)=>{
+    session=s;
+    if(e==='PASSWORD_RECOVERY'){ showPasswordResetGate(); return; }
+    afterSession();
+  });
+}
+// Passwort-Regeln: mind. 8 Zeichen, Groß-/Kleinbuchstabe, Zahl, Sonderzeichen
+function validatePassword(pw){
+  if(!pw || pw.length<8) return 'Mindestens 8 Zeichen.';
+  if(!/[a-z]/.test(pw)) return 'Mindestens ein Kleinbuchstabe.';
+  if(!/[A-Z]/.test(pw)) return 'Mindestens ein Großbuchstabe.';
+  if(!/[0-9]/.test(pw)) return 'Mindestens eine Zahl.';
+  if(!/[^A-Za-z0-9]/.test(pw)) return 'Mindestens ein Sonderzeichen.';
+  return null;
+}
+async function gateForgotPassword(){
+  const email = prompt('Für welche E-Mail-Adresse soll das Passwort zurückgesetzt werden?');
+  if(!email) return;
+  const { error } = await SB.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: location.origin + location.pathname
+  });
+  if(error){ toast(error.message,'err'); return; }
+  toast('Falls die Adresse bekannt ist, wurde eine E-Mail mit einem Link zum Zurücksetzen verschickt.');
+}
+function showPasswordResetGate(){
+  $('#authGate').hidden=true; $('#appHeader').hidden=true; $('#appMain').hidden=true;
+  $('#pwResetGate').hidden=false;
+}
+async function savePasswordReset(){
+  const pw=$('#pwrNew').value, pw2=$('#pwrNew2').value;
+  $('#pwrErr').textContent='';
+  const vErr=validatePassword(pw);
+  if(vErr){ $('#pwrErr').textContent=vErr; return; }
+  if(pw!==pw2){ $('#pwrErr').textContent='Passwörter stimmen nicht überein.'; return; }
+  $('#pwrSaveBtn').disabled=true;
+  const { error } = await SB.auth.updateUser({ password: pw });
+  $('#pwrSaveBtn').disabled=false;
+  if(error){ $('#pwrErr').textContent=error.message; return; }
+  $('#pwResetGate').hidden=true;
+  toast('Passwort gespeichert.');
+  applyAuthGate();
+  await afterSession();
+}
+async function changeOwnPassword(){
+  const body=`<label>Neues Passwort<input type="password" id="pcNew" autocomplete="new-password"></label>
+    <label>Passwort wiederholen<input type="password" id="pcNew2" autocomplete="new-password"></label>
+    <p class="muted" style="font-size:.85em">Mind. 8 Zeichen, Groß- und Kleinbuchstabe, Zahl und Sonderzeichen.</p>`;
+  openDialog('Passwort ändern', body, async()=>{
+    const pw=$('#pcNew').value, pw2=$('#pcNew2').value;
+    const vErr=validatePassword(pw);
+    if(vErr){ toast(vErr,'err'); return false; }
+    if(pw!==pw2){ toast('Passwörter stimmen nicht überein.','err'); return false; }
+    const { error } = await SB.auth.updateUser({ password: pw });
+    if(error){ toast(error.message,'err'); return false; }
+    toast('Passwort geändert.');
+    return true;
+  });
 }
 function applyAuthGate(){
   const inApp = !!session;
@@ -129,9 +185,10 @@ async function afterSession(){
       SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
     }
     $('#logoutBtn').hidden=false;
+    $('#pwChangeBtn').hidden=false;
     $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
   }else{
-    $('#logoutBtn').hidden=true; $('#userBadge').textContent='';
+    $('#logoutBtn').hidden=true; $('#pwChangeBtn').hidden=true; $('#userBadge').textContent='';
   }
   applyRoleFlags();
   realIsAdmin = isAdmin;
@@ -1592,6 +1649,10 @@ function bind(){
   $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#gateEmail').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#logoutBtn').onclick=()=>SB.auth.signOut();
+  $('#gateForgotBtn').onclick=gateForgotPassword;
+  $('#pwrSaveBtn').onclick=savePasswordReset;
+  $('#pwrNew2').onkeydown=e=>{ if(e.key==='Enter') savePasswordReset(); };
+  $('#pwChangeBtn').onclick=changeOwnPassword;
   $('#viewAs').onchange=function(){ setViewAs(this.value); };
   $('#contactSearch').oninput=renderContacts;
   $('#infoDocSel').onchange=renderInfoTab;
