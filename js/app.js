@@ -79,9 +79,13 @@ function openDialog(title, bodyHtml, onSave){
 function closeDialog(){ $('#dlg').hidden=true; _dlgSave=null; }
 
 // ---------- Datei-Upload (Storage-Bucket 'docs') ----------
-async function uploadFile(file, prefix){
+// nameOverride: fester Dateiname statt Zufalls-UUID (für Avatare nötig, siehe Storage-RLS
+// in supabase_migration_v22_storage.sql – dort wird geprüft, dass avatars/<eigene-person-id>.*
+// nur von der Person selbst oder Admin beschrieben werden darf).
+async function uploadFile(file, prefix, nameOverride){
   const ext=(file.name.split('.').pop()||'bin').toLowerCase();
-  const path=`${prefix}/${(crypto.randomUUID?crypto.randomUUID():Date.now())}.${ext}`;
+  const base=nameOverride || (crypto.randomUUID?crypto.randomUUID():Date.now());
+  const path=`${prefix}/${base}.${ext}`;
   const { error }=await SB.storage.from('docs').upload(path, file, {upsert:true});
   if(error){ toast('Upload-Fehler: '+error.message,'err'); return null; }
   return SB.storage.from('docs').getPublicUrl(path).data.publicUrl;
@@ -673,7 +677,7 @@ function editContact(personId){
   openDialog(`${fullName(p)} – Kontakt bearbeiten`, body, async()=>{
     const upd={gemeinde:$('#dc_gem').value||null, email:$('#dc_mail').value||null, telefon:$('#dc_tel').value||null};
     const f=$('#dc_img').files[0];
-    if(f){ const url=await uploadFile(f,'avatars'); if(url) upd.bild_url=url; }
+    if(f){ const url=await uploadFile(f,'avatars',p.id); if(url) upd.bild_url=url; }
     const {error}=await SB.from('people').update(upd).eq('id',p.id);
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(p,upd); renderContacts(); toast('Gespeichert');
@@ -1296,7 +1300,7 @@ function renderTests(fach, sel){
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
       const v=r?Math.round(r.ergebnis):null;
       const txt=v==null?'–':v+'%';
-      const td=edit?`<td class="cell-edit" onclick="editTest('${p.id}','${fach}','${esc(c.label)}',${c.sort})">${txt}</td>`:`<td>${txt}</td>`;
+      const td=edit?`<td class="cell-edit" data-test-cell data-pid="${esc(p.id)}" data-fach="${esc(fach)}" data-label="${esc(c.label)}" data-sort="${esc(c.sort)}">${txt}</td>`:`<td>${txt}</td>`;
       return {v, html:td};
     });
     const known=vals.map(x=>x.v).filter(v=>v!=null);
@@ -1304,6 +1308,10 @@ function renderTests(fach, sel){
     return `<tr><td class="name">${esc(fullName(p))}</td>${vals.map(x=>x.html).join('')}<td class="sum">${avg==null?'–':avg+'%'}</td></tr>`;
   }).join('');
   $(sel).innerHTML=`<table>${head}${body}</table>`;
+  $(sel).onclick=e=>{
+    const td=e.target.closest('[data-test-cell]'); if(!td) return;
+    editTest(td.dataset.pid, td.dataset.fach, td.dataset.label, +td.dataset.sort);
+  };
 }
 function editTest(personId, fach, monat, monatSort){
   const r=cache.tests.find(t=>t.fach===fach&&t.person_id===personId&&t.monat===monat);
