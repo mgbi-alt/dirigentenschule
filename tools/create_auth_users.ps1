@@ -13,7 +13,6 @@
 $ErrorActionPreference = 'Stop'
 
 $SupabaseUrl = 'https://dfhrtfzmhwxnrxlbejvr.supabase.co'
-$AnonKey     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmaHJ0ZnptaHd4bnJ4bGJlanZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTM3NzgsImV4cCI6MjA5NzQ2OTc3OH0.J-SKn8ZpEG3GQLQMXC_zzkCFwJ0Chy2iTrSNiP4d38g'
 
 $ServiceKey = $env:SUPABASE_SERVICE_ROLE_KEY
 if (-not $ServiceKey) {
@@ -38,9 +37,17 @@ function New-StrongPassword {
     -join ($chars | Sort-Object { $rnd.Next() })
 }
 
-# Personen mit E-Mail-Adresse laden (anon key reicht, people ist per RLS lesbar)
+# Personen mit E-Mail-Adresse laden. people ist per RLS gegen anonyme Anfragen
+# gesperrt, daher hier ebenfalls der service_role-Key (umgeht RLS).
 $peopleUrl = "$SupabaseUrl/rest/v1/people?select=id,vorname,nachname,email,aktiv&email=not.is.null"
-$people = Invoke-RestMethod -Uri $peopleUrl -Headers @{ apikey = $AnonKey; Authorization = "Bearer $AnonKey" }
+$people = Invoke-RestMethod -Uri $peopleUrl -Headers @{ apikey = $ServiceKey; Authorization = "Bearer $ServiceKey" }
+$people = $people | Where-Object { $_.email -and $_.email.Trim() -ne '' }
+
+if (-not $people -or $people.Count -eq 0) {
+    Write-Warning "Keine Personen mit E-Mail-Adresse gefunden. Pruefe in Supabase (Table Editor -> people), ob das Feld 'email' gefuellt ist."
+    exit 0
+}
+Write-Host "$($people.Count) Person(en) mit E-Mail-Adresse gefunden.`n"
 
 $results = @()
 foreach ($p in $people) {
