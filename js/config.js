@@ -42,10 +42,11 @@ const INDIVIDUAL_FAECHER = ['Dirigieren','Stimmbildung','Klavier','Gehörbildung
 
 // Rollen (Mehrfach-Zuordnung möglich). Reihenfolge = Sortierung in Kontakten.
 const ROLES = [
-  { key: 'admin',          label: 'Admin' },
-  { key: 'klassenleitung', label: 'Klassenleitung' },
-  { key: 'lehrer',         label: 'Lehrer' },
-  { key: 'schueler',       label: 'Schüler' },
+  { key: 'admin',            label: 'Admin' },
+  { key: 'klassenleitung',   label: 'Klassenleitung' },
+  { key: 'lehrer',           label: 'Lehrer' },
+  { key: 'klavierbegleitung', label: 'Klavierbegleitung' },
+  { key: 'schueler',         label: 'Schüler' },
 ];
 
 // Info-Tab: feste PDF-Pläne

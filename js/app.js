@@ -658,6 +658,12 @@ function teacherPeople(){
     .sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
 }
 function byName(a,b){ return fullName(a).localeCompare(fullName(b),'de'); }
+// Pool für die Klavierbegleitung-Auswahl: Personen mit der Rolle Klavierbegleitung
+// oder dem Fach Klavierbegleitung; sonst Fallback auf alle Aktiven.
+function klavierbegleitPool(){
+  const pool=cache.people.filter(p=>p.aktiv && (hasRole(p,'klavierbegleitung')||(p.faecher||[]).includes('Klavierbegleitung')));
+  return (pool.length?pool:allActive()).slice().sort(byName);
+}
 function peopleForSubject(subject, fallback){
   const assigned=cache.people.filter(p=>p.aktiv && (p.faecher||[]).includes(subject));
   return (assigned.length?assigned:fallback()).slice().sort(byName);
@@ -1067,7 +1073,7 @@ function lessonForm(r){
       <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_lehids');updateLessonDialogVis()">Auswahl leeren</button></label>
     <label id="wrapLehFree" style="display:none">Lehrer-Freitext<input id="tl_leh" value="${esc(r.lehrer||'')}" placeholder="z.B. AB, DP"></label>
     <label id="wrapKb">Klavierbegleitung (Mehrfachauswahl)
-      <select id="tl_kbids" multiple size="4" onchange="updateLessonDialogVis()">${peopleSelectOpts(peopleForSubject('Klavierbegleitung',allActive), withOther(r.klavier_ids,r.klavier))}</select>
+      <select id="tl_kbids" multiple size="4" onchange="updateLessonDialogVis()">${peopleSelectOpts(klavierbegleitPool(), withOther(r.klavier_ids,r.klavier))}</select>
       <button type="button" class="btn-ghost mini" onclick="clearMulti('tl_kbids');updateLessonDialogVis()">Auswahl leeren</button></label>
     <label id="wrapKlaFree" style="display:none">Klavierbegleitung-Freitext<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
@@ -1097,7 +1103,7 @@ function refreshLessonPools(){
   const selL=[...$('#tl_lehids').selectedOptions].map(o=>o.value);
   const selK=[...$('#tl_kbids').selectedOptions].map(o=>o.value);
   $('#tl_lehids').innerHTML=peopleSelectOpts(peopleForSubject(fach,teacherPeople), selL);
-  $('#tl_kbids').innerHTML=peopleSelectOpts(peopleForSubject('Klavierbegleitung',allActive), selK);
+  $('#tl_kbids').innerHTML=peopleSelectOpts(klavierbegleitPool(), selK);
   updateLessonDialogVis();
 }
 function readLessonForm(){
