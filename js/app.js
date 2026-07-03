@@ -1129,16 +1129,26 @@ function renderBewertung(){
 }
 function testColsFor(fach){
   const map=new Map();
-  cache.testCols.filter(c=>c.fach===fach).forEach(c=>map.set(c.label,c.sort||0));
-  cache.tests.filter(t=>t.fach===fach&&t.monat).forEach(t=>{ if(!map.has(t.monat)) map.set(t.monat,t.monat_sort||0); });
-  return [...map.entries()].sort((a,b)=>a[1]-b[1]).map(e=>({label:e[0],sort:e[1]}));
+  cache.testCols.filter(c=>c.fach===fach).forEach(c=>map.set(c.label,{sort:c.sort||0, plan_id:c.plan_id||null}));
+  cache.tests.filter(t=>t.fach===fach&&t.monat).forEach(t=>{ if(!map.has(t.monat)) map.set(t.monat,{sort:t.monat_sort||0, plan_id:null}); });
+  return [...map.entries()].sort((a,b)=>a[1].sort-b[1].sort).map(e=>({label:e[0],sort:e[1].sort,plan_id:e[1].plan_id}));
+}
+// Test-Spalte -> zugeordnetes Treffen (oder null). Anzeige = Treffen statt Monatslabel.
+function testColPlan(c){ return c&&c.plan_id ? cache.plans.find(p=>p.id===c.plan_id) : null; }
+function testColHeadHtml(c){
+  const pl=testColPlan(c);
+  return pl ? `${esc(pl.name||'Treffen')}<br><span class="muted">${esc(treffenDateLabel(pl))}</span>` : esc(c.label);
+}
+function testColText(c){
+  const pl=testColPlan(c);
+  return pl ? `${pl.name||'Treffen'}${treffenDateLabel(pl)?' · '+treffenDateLabel(pl):''}` : c.label;
 }
 function renderTests(fach, sel){
   const rows=cache.tests.filter(t=>t.fach===fach);
   const cols=testColsFor(fach);
   const edit=canEdit('tests');
   if(!cols.length){ $(sel).innerHTML=`<p class="muted" style="padding:14px">${edit?'Noch keine Tests – über „Tests verwalten" anlegen.':'Keine Tests.'}</p>`; return; }
-  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${esc(c.label)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
+  const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th>${testColHeadHtml(c)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
   const body=visibleStudents().map(p=>{
     const vals=cols.map(c=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
@@ -1155,10 +1165,12 @@ function renderTests(fach, sel){
 }
 function editTest(personId, fach, monat, monatSort){
   const r=cache.tests.find(t=>t.fach===fach&&t.person_id===personId&&t.monat===monat);
-  const body=`<label>${esc(monat)} – Ergebnis (%)
+  const col=testColsFor(fach).find(c=>c.label===monat);
+  const lbl=col?testColText(col):monat;
+  const body=`<label>${esc(lbl)} – Ergebnis (%)
     <input type="number" id="dt_e" min="0" max="100" value="${r?Math.round(r.ergebnis):''}"></label>
     <p class="muted">Leer lassen löscht den Eintrag.</p>`;
-  openDialog(`${fullName(personById(personId))} – ${monat}`, body, ()=>saveTest(personId,fach,monat,monatSort,$('#dt_e').value));
+  openDialog(`${fullName(personById(personId))} – ${esc(lbl)}`, body, ()=>saveTest(personId,fach,monat,monatSort,$('#dt_e').value));
 }
 async function saveTest(personId, fach, monat, monatSort, value){
   const v=parseNum(value);
