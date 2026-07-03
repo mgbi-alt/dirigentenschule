@@ -780,6 +780,7 @@ function renderStundenplan(){
   $('#ttAddBtn').hidden = !edit;
   const token=view==='mine'?myToken():null;
   const diffMode = !!(base && planId!==base.id);
+  $('#ttResetBtn').hidden = !(isAdmin && edit && diffMode);
   const planTage=(plan&&plan.tage)||'fr_sa';
   const availDays = planTage==='fr'?['freitag'] : planTage==='sa'?['samstag'] : ['freitag','samstag'];
   if(!availDays.includes(ttSelectedDay)) ttSelectedDay=availDays[0];
@@ -869,6 +870,25 @@ async function createTreffen(name, datum, tage){
     if(e2){ toast(e2.message,'err'); } else cache.tt.push(...(ins||[]));
   }
   cache.plans.push(plan); return plan;
+}
+// Kompletter Reset: alle Stundenplan-Zeilen eines abgeleiteten Plans löschen und frisch aus dem Grundplan ableiten.
+async function resetPlanToBase(planId){
+  const base=basePlan(); const plan=cache.plans.find(p=>p.id===planId);
+  if(!base||!plan||plan.is_base){ toast('Nur für abgeleitete Pläne möglich','err'); return; }
+  if(!confirm(`Den kompletten Stundenplan von „${plan.name}" auf den Grundplan zurücksetzen?\n\nAlle manuellen Änderungen am Stundenplan dieses Treffens (Vertretungen, verschobene, entfallene oder neue Stunden) gehen verloren. Abmeldungen von Personen bleiben erhalten.`)) return;
+  const {error:delErr}=await SB.from('timetable').delete().eq('plan_id',planId);
+  if(delErr){ toast(delErr.message,'err'); return; }
+  cache.tt=cache.tt.filter(r=>r.plan_id!==planId);
+  const copies=cache.tt.filter(r=>r.plan_id===base.id).map(r=>({plan_id:planId, tag:r.tag, zeit:r.zeit,
+    zeit_sort:r.zeit_sort, fach:r.fach, ueberschrift:r.ueberschrift, schueler:r.schueler, schueler_ids:r.schueler_ids,
+    lehrer:r.lehrer, lehrer_ids:r.lehrer_ids, klavier:r.klavier, klavier_ids:r.klavier_ids, raum:r.raum, sort:r.sort,
+    source_id:r.id}));
+  if(copies.length){
+    const {data,error}=await SB.from('timetable').insert(copies).select();
+    if(error){ toast(error.message,'err'); return; }
+    cache.tt.push(...(data||[]));
+  }
+  renderStundenplan(); toast('Stundenplan auf Grundplan zurückgesetzt');
 }
 function copyPlan(){
   openDialog('Neuen Plan anlegen (Kopie Grundplan)', `<label>Name<input id="cp_name" placeholder="z.B. Treffen 14.06.2026"></label>
@@ -1546,6 +1566,7 @@ function bind(){
   $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
   $('#ttNewPlanBtn').onclick=copyPlan;
+  $('#ttResetBtn').onclick=()=>resetPlanToBase(currentPlanId());
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
   $('#ttView').onchange=renderStundenplan;
