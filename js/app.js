@@ -445,12 +445,13 @@ function openHaCell(planId, personId){
 }
 
 // ----- Übezeiten -----
-function practiceCellClass(min){
+function practiceCellClass(min, ferien){
+  if(ferien) return '';
   if(min<PRACTICE_TARGET/2) return 'cell-red';
   if(min<PRACTICE_TARGET) return 'cell-yellow';
   return 'cell-green';
 }
-function gesamtClass(sum){ return sum>=4*PRACTICE_TARGET?'cell-green':sum>=2*PRACTICE_TARGET?'cell-yellow':'cell-red'; }
+function gesamtClass(sum, ferien){ return ferien?'':sum>=4*PRACTICE_TARGET?'cell-green':sum>=2*PRACTICE_TARGET?'cell-yellow':'cell-red'; }
 function fillPracticeFilters(){
   const years=[...new Set(cache.practice.map(r=>r.jahr))].sort((a,b)=>b-a);
   const weeks=[...new Set(cache.practice.map(r=>r.kw))].sort((a,b)=>b-a);
@@ -490,12 +491,12 @@ function renderPractice(){
     const sum=SUBJECTS.reduce((s,sub)=>s+(+r[sub.key]||0),0);
     const cells=SUBJECTS.map(sub=>{
       const v=+r[sub.key]||0;
-      return `<td class="${practiceCellClass(v)}">${v} <span class="muted">Min</span></td>`;
+      return `<td class="${practiceCellClass(v,r.ferien)}">${v} <span class="muted">Min</span></td>`;
     }).join('');
     return `<tr class="${canEditRow?'cell-edit':''}" ${canEditRow?`onclick="editPractice('${r.id}')"`:''}>
       <td>${r.jahr}</td><td>${r.kw}</td><td>${kwRange(r.jahr,r.kw)}</td>
       <td class="name">${esc(fullName(p))}</td>${cells}
-      <td class="sum ${gesamtClass(sum)}">${sum} Min</td>
+      <td class="sum ${gesamtClass(sum,r.ferien)}">${sum} Min</td>
       <td>${r.ferien?'✓':'–'}</td></tr>`;
   }).join('');
   $('#practiceTable').innerHTML = rows.length
