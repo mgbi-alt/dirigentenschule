@@ -1208,7 +1208,8 @@ function slotSortFor(zeit){
 function editLesson(id){
   const r=cache.tt.find(x=>x.id===id); if(!r) return;
   const base=basePlan();
-  const baseR=(base && r.plan_id!==base.id && r.source_id) ? cache.tt.find(x=>x.id===r.source_id) : null;
+  const isBaseLesson = !!base && r.plan_id===base.id;
+  const baseR=(base && !isBaseLesson && r.source_id) ? cache.tt.find(x=>x.id===r.source_id) : null;
   const differsFromBase = !!baseR && (()=>{ const c=lessonFields(r), b=lessonFields(baseR);
     return ['ueber','stu','leh','kla','raum'].some(k=>(c[k]||'')!==(b[k]||'')); })();
   let body=lessonForm(r)
@@ -1219,7 +1220,19 @@ function editLesson(id){
     await ensureRoom(upd.raum);
     const {error}=await SB.from('timetable').update(upd).eq('id',id);
     if(error){ toast(error.message,'err'); return false; }
-    Object.assign(r,upd); renderStundenplan(); toast('Gespeichert');
+    Object.assign(r,upd);
+    let msg='Gespeichert';
+    if(isBaseLesson){
+      const children=cache.tt.filter(x=>x.source_id===id);
+      if(children.length && confirm(`Diese Änderung auch bei allen ${children.length} Treffen übernehmen, die diese Grundplan-Stunde übernommen haben?\n\nManuelle Abweichungen (z.B. Vertretungen) in einzelnen Treffen werden dabei überschrieben.`)){
+        const {ueberschrift,schueler,schueler_ids,lehrer,lehrer_ids,klavier,klavier_ids,raum,entfaellt,tag,zeit,zeit_sort,fach}=upd;
+        const prop={ueberschrift,schueler,schueler_ids,lehrer,lehrer_ids,klavier,klavier_ids,raum,entfaellt,tag,zeit,zeit_sort,fach,updated_at:new Date().toISOString()};
+        const {error:pErr}=await SB.from('timetable').update(prop).eq('source_id',id);
+        if(pErr){ toast(pErr.message,'err'); }
+        else{ children.forEach(c=>Object.assign(c,prop)); msg=`Gespeichert, für ${children.length} Treffen übernommen`; }
+      }
+    }
+    renderStundenplan(); toast(msg);
   });
   updateLessonDialogVis();
 }
