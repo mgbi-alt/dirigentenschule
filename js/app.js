@@ -1215,6 +1215,7 @@ function editLesson(id){
   let body=lessonForm(r)
     +(differsFromBase?`<button type="button" class="btn-ghost" style="margin-top:4px" onclick="resetLessonToBase('${id}')" title="Veraltete Kopie: Werte des Grundplans übernehmen">↩ Auf Grundplan zurücksetzen</button>`:'')
     +`<button class="btn-ghost" style="margin-top:4px" onclick="delLesson('${id}')">Eintrag löschen</button>`;
+  const oldFields = isBaseLesson ? lessonFields(r) : null;
   openDialog('Stundenplan-Eintrag', body, async()=>{
     const upd=readLessonForm(); upd.zeit_sort=slotSortFor(upd.zeit); upd.updated_at=new Date().toISOString();
     await ensureRoom(upd.raum);
@@ -1224,12 +1225,20 @@ function editLesson(id){
     let msg='Gespeichert';
     if(isBaseLesson){
       const children=cache.tt.filter(x=>x.source_id===id);
-      if(children.length && confirm(`Diese Änderung auch bei allen ${children.length} Treffen übernehmen, die diese Grundplan-Stunde übernommen haben?\n\nManuelle Abweichungen (z.B. Vertretungen) in einzelnen Treffen werden dabei überschrieben.`)){
+      // Nur Treffen aktualisieren, die noch unverändert dem alten Grundplan entsprachen –
+      // Treffen mit einer echten manuellen Abweichung (Vertretung) bleiben unangetastet.
+      const unchanged=children.filter(c=>{ const cf=lessonFields(c);
+        return !['ueber','stu','leh','kla','raum'].some(k=>(cf[k]||'')!==(oldFields[k]||'')); });
+      const skipped=children.length-unchanged.length;
+      if(unchanged.length && confirm(`Diese Änderung auch bei ${unchanged.length} Treffen übernehmen, die diese Grundplan-Stunde unverändert übernommen haben?`
+          +(skipped?`\n\n${skipped} weitere(s) Treffen mit manueller Abweichung (Vertretung) werden NICHT verändert.`:''))){
         const {ueberschrift,schueler,schueler_ids,lehrer,lehrer_ids,klavier,klavier_ids,raum,entfaellt,tag,zeit,zeit_sort,fach}=upd;
         const prop={ueberschrift,schueler,schueler_ids,lehrer,lehrer_ids,klavier,klavier_ids,raum,entfaellt,tag,zeit,zeit_sort,fach,updated_at:new Date().toISOString()};
-        const {error:pErr}=await SB.from('timetable').update(prop).eq('source_id',id);
+        const {error:pErr}=await SB.from('timetable').update(prop).in('id',unchanged.map(c=>c.id));
         if(pErr){ toast(pErr.message,'err'); }
-        else{ children.forEach(c=>Object.assign(c,prop)); msg=`Gespeichert, für ${children.length} Treffen übernommen`; }
+        else{ unchanged.forEach(c=>Object.assign(c,prop)); msg=`Gespeichert, für ${unchanged.length} Treffen übernommen`+(skipped?` (${skipped} mit Abweichung übersprungen)`:''); }
+      } else if(skipped && children.length){
+        msg='Gespeichert (Treffen mit manueller Abweichung unverändert gelassen)';
       }
     }
     renderStundenplan(); toast(msg);
