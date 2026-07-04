@@ -1,0 +1,21 @@
+name: Supabase Keepalive
+
+# Verhindert, dass das kostenlose Supabase-Projekt nach 7 Tagen ohne API-Zugriff
+# automatisch pausiert wird (z.B. waehrend der Ferien). Schickt zweimal pro Woche
+# eine harmlose, minimale Leseanfrage an die REST-API. Der verwendete Key ist der
+# oeffentliche anon-Key (steht ohnehin in js/config.js im Repo).
+
+on:
+  schedule:
+    - cron: '0 6 * * 1,4'   # Montag und Donnerstag, 06:00 UTC
+  workflow_dispatch: {}      # manuell auslösbar über den "Run workflow"-Button
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+            "https://dfhrtfzmhwxnrxlbejvr.supabase.co/rest/v1/announcements?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmaHJ0ZnptaHd4bnJ4bGJlanZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTM3NzgsImV4cCI6MjA5NzQ2OTc3OH0.J-SKn8ZpEG3GQLQMXC_zzkCFwJ0Chy2iTrSNiP4d38g"
