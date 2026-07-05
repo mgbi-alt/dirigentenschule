@@ -677,7 +677,7 @@ function editContact(personId){
   openDialog(`${fullName(p)} – Kontakt bearbeiten`, body, async()=>{
     const upd={gemeinde:$('#dc_gem').value||null, email:$('#dc_mail').value||null, telefon:$('#dc_tel').value||null};
     const f=$('#dc_img').files[0];
-    if(f){ const url=await uploadFile(f,'avatars',p.id); if(url) upd.bild_url=url; }
+    if(f){ const url=await uploadFile(f,'avatars',p.id); if(url) upd.bild_url=url+'?v='+Date.now(); }
     const {error}=await SB.from('people').update(upd).eq('id',p.id);
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(p,upd); renderContacts(); toast('Gespeichert');
