@@ -292,8 +292,9 @@ function renderStart(){
 
   const canInfo=canEdit('infos');
   const today=new Date().toISOString().slice(0,10);
+  const roleLabelMap=Object.fromEntries(ROLES.map(r=>[r.key,r.label]));
   const absLi=a=>{ const p=personById(a.person_id);
-    const rolle=p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung'))?'Lehrer':(p&&hasRole(p,'admin')?'Admin':'Schüler');
+    const rolle=p?(roleLabelMap[primaryRole(p)]||'Schüler'):'Schüler';
     return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; };
   const infoHtml=a=>`<div class="ann-block"><h4>${esc(a.titel)} ${a.datum?`<span class="date">${fmtDate(a.datum)}</span>`:''}</h4>
       <div class="ann-body">${sanitizeHtml(a.text)}</div>
