@@ -3,19 +3,21 @@
 # Laedt bei Bedarf die Supabase-CLI herunter, verknuepft das Projekt und deployt die
 # Funktion inkl. des benoetigten Secrets.
 #
-# Aufruf (in diesem Fenster BEIDE Variablen setzen, dann Skript starten):
-#   $env:SUPABASE_ACCESS_TOKEN    = "sbp_..."   # https://supabase.com/dashboard/account/tokens -> Generate new token
-#   $env:SUPABASE_SERVICE_ROLE_KEY = "eyJ..."   # Supabase Dashboard -> Project Settings -> API -> service_role (GEHEIM!)
+# Aufruf (Variable setzen, dann Skript starten):
+#   $env:SUPABASE_ACCESS_TOKEN = "sbp_..."   # https://supabase.com/dashboard/account/tokens -> Generate new token
 #   powershell -ExecutionPolicy Bypass -File .\tools\deploy_welcome_function.ps1
 #
-# Beide Werte sind hochsensibel: niemals committen, niemals an Dritte weitergeben.
-# Am besten das Terminal danach schliessen, damit sie aus dem Speicher verschwinden.
+# Der service_role-Key muss NICHT separat gesetzt werden -- Supabase stellt ihn jeder
+# Edge Function automatisch als SUPABASE_SERVICE_ROLE_KEY bereit (reservierter Name,
+# kann/darf nicht manuell per `secrets set` ueberschrieben werden).
+#
+# Der Access Token ist hochsensibel: niemals committen, niemals an Dritte weitergeben.
+# Am besten das Terminal danach schliessen, damit er aus dem Speicher verschwindet.
 
 $ErrorActionPreference = 'Stop'
 $ProjectRef = 'dfhrtfzmhwxnrxlbejvr'
 
 if (-not $env:SUPABASE_ACCESS_TOKEN) { Write-Error "SUPABASE_ACCESS_TOKEN ist nicht gesetzt. Siehe Kopf des Skripts."; exit 1 }
-if (-not $env:SUPABASE_SERVICE_ROLE_KEY) { Write-Error "SUPABASE_SERVICE_ROLE_KEY ist nicht gesetzt. Siehe Kopf des Skripts."; exit 1 }
 
 $ToolsDir = $PSScriptRoot
 $CliDir   = Join-Path $ToolsDir '.supabase-cli'
@@ -41,10 +43,6 @@ try {
     Write-Host "`nDeploye Funktion 'set-welcome-password'..."
     & $CliExe functions deploy set-welcome-password
     if ($LASTEXITCODE -ne 0) { throw "Deploy fehlgeschlagen" }
-
-    Write-Host "`nSetze Secret SUPABASE_SERVICE_ROLE_KEY fuer die Funktion..."
-    & $CliExe secrets set "SUPABASE_SERVICE_ROLE_KEY=$($env:SUPABASE_SERVICE_ROLE_KEY)"
-    if ($LASTEXITCODE -ne 0) { throw "Secret setzen fehlgeschlagen" }
 
     Write-Host "`nFertig! Der Willkommensmail-Button in der App sollte jetzt funktionieren."
 } finally {
