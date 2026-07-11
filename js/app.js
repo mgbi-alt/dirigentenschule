@@ -1549,9 +1549,23 @@ function renderPersonAdmin(){
       <span class="pi-name">${esc(fullName(p))}</span>
       <span class="muted pi-email">${esc(p.email||'—')}</span>
       <span class="pi-roles">${pills}${p.aktiv?'':' <span class="role-pill">inaktiv</span>'}</span>
-      <button class="btn-ghost" style="margin-left:auto" onclick="editPerson('${p.id}')">Bearbeiten</button>
+      ${p.email?`<button class="btn-ghost" onclick="sendWelcomeMail('${p.id}')">Willkommensmail</button>`:''}
+      <button class="btn-ghost" style="margin-left:${p.email?'0':'auto'}" onclick="editPerson('${p.id}')">Bearbeiten</button>
     </div>`;
   }).join('') || '<p class="muted">Keine Treffer.</p>';
+}
+// Setzt per Edge Function ein neues Zufallspasswort für die Person und öffnet einen
+// vorausgefüllten Mail-Entwurf (der Admin prüft & verschickt selbst, siehe supabase/functions/set-welcome-password).
+async function sendWelcomeMail(personId){
+  const p=personById(personId); if(!p||!p.email) return;
+  if(!confirm(`Für ${fullName(p)} ein neues Passwort setzen und eine Willkommensmail vorbereiten?\n\nEin eventuell vorhandenes altes Passwort wird dabei ungültig.`)) return;
+  const { data, error } = await SB.functions.invoke('set-welcome-password', { body:{ email:p.email } });
+  if(error || data?.error){ toast('Fehler: '+(data?.error||error.message),'err'); return; }
+  const vorname=data.vorname||p.vorname||p.nachname;
+  const subject='Willkommen bei der Dirigentenschule – deine Zugangsdaten';
+  const body=`Hallo ${vorname},\n\nherzlich willkommen bei der Dirigentenschule! Du kannst dich ab sofort mit folgenden Zugangsdaten in der App anmelden:\n\nApp-Link: ${location.origin}${location.pathname}\nBenutzername (E-Mail): ${data.email}\nPasswort: ${data.password}\n\nBitte melde dich damit an und vergib dir danach über „Passwort ändern" im Menü ein eigenes, nur dir bekanntes Passwort.\n\nBei Fragen melde dich gerne jederzeit.\n\nViele Grüße`;
+  window.location.href=`mailto:${encodeURIComponent(data.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  toast('Passwort gesetzt, Mail-Entwurf geöffnet');
 }
 function personFormBody(p, withContact){
   p=p||{};

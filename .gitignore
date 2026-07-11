@@ -5,6 +5,7 @@ _Backups/
 node_modules/
 .vscode/
 .claude/
+tools/.supabase-cli/
 
 # Personenbezogene Alt-Daten (nur lokal importieren, NICHT committen!)
 hk_*.csv
