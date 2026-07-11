@@ -81,11 +81,12 @@ Deno.serve(async (req) => {
 
     const password = genPassword();
 
+    const emailLower = email.toLowerCase();
     let userId: string | null = null;
     for (let page = 1; page <= 20 && !userId; page++) {
       const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
       if (listErr) break;
-      const found = list.users.find((u) => u.email === email);
+      const found = list.users.find((u) => (u.email || '').toLowerCase() === emailLower);
       if (found) userId = found.id;
       if (list.users.length < 1000) break;
     }
@@ -95,7 +96,12 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 500);
     } else {
       const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
-      if (error) return json({ error: error.message }, 500);
+      if (error) {
+        if (/already.*registered/i.test(error.message)) {
+          return json({ error: 'Konnte den bestehenden Account nicht eindeutig finden (E-Mail-Schreibweise?). Bitte in Supabase (Authentication -> Users) pruefen.' }, 500);
+        }
+        return json({ error: error.message }, 500);
+      }
     }
 
     return json({ email, vorname: person.vorname || person.nachname, password });
