@@ -344,9 +344,13 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .cal-day:hover{background:var(--bg2)}
 .cal-day.other-month{background:var(--bg);opacity:.5}
 .cal-day.today .cal-daynum{background:var(--accent);color:#fff;border-radius:50%}
+.cal-day.is-ferien{background:rgba(143,179,217,.14)}
 .cal-daynum{font-size:12px;font-weight:600;width:20px;height:20px;display:flex;align-items:center;justify-content:center}
 .cal-evt{font-size:11px;padding:2px 5px;border-radius:4px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.cal-holiday{font-size:9.5px;color:#c04b4b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-ferien{font-size:9.5px;color:#5f85ab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:640px){
   .cal-day{min-height:64px;font-size:11px}
   .cal-evt{font-size:9.5px;padding:1px 4px}
+  .cal-holiday,.cal-ferien{font-size:8px}
 }

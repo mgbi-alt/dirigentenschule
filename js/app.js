@@ -768,7 +768,9 @@ function renderKalender(){
   const monthNames=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
   $('#calTitle').textContent=`Kalender – ${monthNames[calMonth]} ${calYear}`;
   $('#calLegend').innerHTML=CAL_KATEGORIEN.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('')
-    +`<span><span class="dot" style="background:${TREFFEN_COLOR}"></span>Treffen</span>`;
+    +`<span><span class="dot" style="background:${TREFFEN_COLOR}"></span>Treffen</span>`
+    +`<span><span class="dot" style="background:#c04b4b"></span>Feiertag (NRW)</span>`
+    +`<span><span class="dot" style="background:#8fb3d9"></span>Schulferien (NRW)</span>`;
 
   const first=new Date(calYear,calMonth,1);
   const startDow=(first.getDay()+6)%7; // 0=Montag
@@ -776,6 +778,8 @@ function renderKalender(){
   const prevDays=new Date(calYear,calMonth,0).getDate();
   const cellsCount=Math.ceil((startDow+daysInMonth)/7)*7;
   const todayStr=dateISO(new Date());
+  const holidays={...getNRWHolidays(calYear-1), ...getNRWHolidays(calYear), ...getNRWHolidays(calYear+1)};
+  const schoolDays={...getSchoolHolidayDays(calYear-1), ...getSchoolHolidayDays(calYear), ...getSchoolHolidayDays(calYear+1)};
 
   const byDate={};
   calAllItems().forEach(t=>{
@@ -797,13 +801,17 @@ function renderKalender(){
     else if(dayNum>daysInMonth){ dn=dayNum-daysInMonth; m=calMonth+1; if(m>11){m=0;y++;} otherMonth=true; }
     const ds=`${y}-${pad2(m+1)}-${pad2(dn)}`;
     const isToday=ds===todayStr;
+    const holName=holidays[ds];
+    const ferName=schoolDays[ds];
     const evts=(byDate[ds]||[]).slice().sort((a,b)=>(a.uhrzeit||'').localeCompare(b.uhrzeit||''));
     const evtHtml=evts.map(t=>{
       const color=t.isTreffen?TREFFEN_COLOR:catFor(t.kategorie).color;
       const click=t.isTreffen?`event.stopPropagation();goToTreffen('${t.id}')`:`event.stopPropagation();openTerminDialog('${t.id}')`;
       return `<div class="cal-evt" style="background:${color}" title="${esc(t.titel)}" onclick="${click}">${esc(t.titel)}</div>`; }).join('');
-    html+=`<div class="cal-day ${otherMonth?'other-month':''} ${isToday?'today':''}" ${edit?`onclick="openTerminDialog(null,'${ds}')"`:''}>
-      <div class="cal-daynum">${dn}</div>${evtHtml}</div>`;
+    const holHtml=holName?`<div class="cal-holiday" title="${esc(holName)}">${esc(holName)}</div>`:'';
+    const ferHtml=(!holName&&ferName)?`<div class="cal-ferien" title="${esc(ferName)}">${esc(ferName)}</div>`:'';
+    html+=`<div class="cal-day ${otherMonth?'other-month':''} ${isToday?'today':''} ${ferName?'is-ferien':''}" ${edit?`onclick="openTerminDialog(null,'${ds}')"`:''}>
+      <div class="cal-daynum">${dn}</div>${holHtml}${ferHtml}${evtHtml}</div>`;
   }
   $('#calGrid').innerHTML=html;
 }

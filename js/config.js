@@ -67,3 +67,49 @@ const SITE_DOCS = [
 
 // erlaubte Übezeiten-Werte (Minuten) im Dialog
 const MIN_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40];
+
+// ---------- NRW-Feiertage & Schulferien (für den Kalender) ----------
+// Gesetzliche Feiertage NRW: fixe + bewegliche (Ostern per Gauss-Formel), Rückgabe {'JJJJ-MM-TT': Name}
+function getNRWHolidays(year){
+  const fixed=[['01-01','Neujahr'],['05-01','Tag der Arbeit'],['10-03','Tag der Deutschen Einheit'],['11-01','Allerheiligen'],['12-25','1. Weihnachtstag'],['12-26','2. Weihnachtstag']];
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),easter=new Date(year,Math.floor((h+l-7*m+114)/31)-1,(h+l-7*m+114)%31+1);
+  function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
+  function fmt(d){return`${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+  const movable=[[addDays(easter,-2),'Karfreitag'],[addDays(easter,1),'Ostermontag'],[addDays(easter,39),'Christi Himmelfahrt'],[addDays(easter,50),'Pfingstmontag'],[addDays(easter,60),'Fronleichnam']];
+  const result={};
+  fixed.forEach(([d,n])=>result[`${year}-${d}`]=n);
+  movable.forEach(([d,n])=>result[`${year}-${fmt(d)}`]=n);
+  return result;
+}
+// Schulferien NRW (feste Zeiträume, jährlich vom Land veröffentlicht – bei Bedarf ergänzen)
+function getNRWSchoolHolidays(year){
+  const h=[];
+  if(year===2025){
+    h.push({from:'2025-01-01',to:'2025-01-03',name:'Weihnachtsferien'});
+    h.push({from:'2025-03-24',to:'2025-04-05',name:'Osterferien'});
+    h.push({from:'2025-06-23',to:'2025-07-04',name:'Sommerferien'});
+    h.push({from:'2025-10-06',to:'2025-10-17',name:'Herbstferien'});
+    h.push({from:'2025-12-22',to:'2026-01-05',name:'Weihnachtsferien'});
+  } else if(year===2026){
+    h.push({from:'2026-01-01',to:'2026-01-05',name:'Weihnachtsferien'});
+    h.push({from:'2026-03-30',to:'2026-04-11',name:'Osterferien'});
+    h.push({from:'2026-07-20',to:'2026-09-01',name:'Sommerferien'});
+    h.push({from:'2026-10-05',to:'2026-10-17',name:'Herbstferien'});
+    h.push({from:'2026-12-23',to:'2027-01-06',name:'Weihnachtsferien'});
+  }
+  return h;
+}
+// Alle Ferientage eines Jahres als {'JJJJ-MM-TT': Name} (inkl. Überlauf aus Nachbarjahren)
+function getSchoolHolidayDays(year){
+  const result={};
+  const holidays=[...getNRWSchoolHolidays(year-1),...getNRWSchoolHolidays(year),...getNRWSchoolHolidays(year+1)];
+  holidays.forEach(({from,to,name})=>{
+    let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00');
+    while(d<=end){
+      const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if(ds.startsWith(String(year))) result[ds]=name;
+      d.setDate(d.getDate()+1);
+    }
+  });
+  return result;
+}
