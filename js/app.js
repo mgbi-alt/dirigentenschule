@@ -735,13 +735,24 @@ function calShift(delta){
 }
 function calToday(){ const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth(); renderKalender(); }
 function catFor(key){ return CAL_KATEGORIEN.find(c=>c.key===key)||CAL_KATEGORIEN[CAL_KATEGORIEN.length-1]; }
+const TREFFEN_COLOR='#4c7a8c';
+// Termine (editierbar) + Treffen aus der Stundenplan-Verwaltung (nur lesend, eigenes Datum) zusammengeführt.
+function calAllItems(){
+  const termine=cache.termine.map(t=>({...t, isTreffen:false}));
+  const treffen=cache.plans.filter(p=>!p.is_base && p.datum).map(p=>({
+    id:p.id, titel:p.name||'Treffen', datum:p.datum, bis_datum:null, uhrzeit:null,
+    ort:null, kategorie:'treffen', isTreffen:true,
+  }));
+  return termine.concat(treffen);
+}
 function renderKalender(){
   initCalState();
   const edit=canEdit('kalender');
   $('#calAddBtn').hidden=!edit;
   const monthNames=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
   $('#calTitle').textContent=`Kalender – ${monthNames[calMonth]} ${calYear}`;
-  $('#calLegend').innerHTML=CAL_KATEGORIEN.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('');
+  $('#calLegend').innerHTML=CAL_KATEGORIEN.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('')
+    +`<span><span class="dot" style="background:${TREFFEN_COLOR}"></span>Treffen</span>`;
 
   const first=new Date(calYear,calMonth,1);
   const startDow=(first.getDay()+6)%7; // 0=Montag
@@ -751,7 +762,7 @@ function renderKalender(){
   const todayStr=new Date().toISOString().slice(0,10);
 
   const byDate={};
-  cache.termine.forEach(t=>{
+  calAllItems().forEach(t=>{
     const from=t.datum, to=t.bis_datum||t.datum;
     let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00'); let guard=0;
     while(d<=end && guard<400){
@@ -771,8 +782,10 @@ function renderKalender(){
     const ds=`${y}-${pad2(m+1)}-${pad2(dn)}`;
     const isToday=ds===todayStr;
     const evts=(byDate[ds]||[]).slice().sort((a,b)=>(a.uhrzeit||'').localeCompare(b.uhrzeit||''));
-    const evtHtml=evts.map(t=>{ const c=catFor(t.kategorie);
-      return `<div class="cal-evt" style="background:${c.color}" title="${esc(t.titel)}" onclick="event.stopPropagation();openTerminDialog('${t.id}')">${esc(t.titel)}</div>`; }).join('');
+    const evtHtml=evts.map(t=>{
+      const color=t.isTreffen?TREFFEN_COLOR:catFor(t.kategorie).color;
+      const click=t.isTreffen?`event.stopPropagation();goToTreffen('${t.id}')`:`event.stopPropagation();openTerminDialog('${t.id}')`;
+      return `<div class="cal-evt" style="background:${color}" title="${esc(t.titel)}" onclick="${click}">${esc(t.titel)}</div>`; }).join('');
     html+=`<div class="cal-day ${otherMonth?'other-month':''} ${isToday?'today':''}" ${edit?`onclick="openTerminDialog(null,'${ds}')"`:''}>
       <div class="cal-daynum">${dn}</div>${evtHtml}</div>`;
   }
@@ -817,6 +830,12 @@ function openTerminDialog(id, prefillDate){
     renderKalender(); renderUpcomingEvents(); toast('Gespeichert');
   });
 }
+// Klick auf ein Treffen im Kalender -> Stundenplan fuer dieses Treffen oeffnen
+function goToTreffen(planId){
+  showPage('stundenplan');
+  const sel=$('#ttPlan'); if(sel) sel.value=planId;
+  renderStundenplan();
+}
 async function delTermin(id){
   if(!confirm('Diesen Termin löschen?')) return;
   const {error}=await SB.from('termine').delete().eq('id',id);
@@ -824,11 +843,11 @@ async function delTermin(id){
   cache.termine=cache.termine.filter(t=>t.id!==id);
   closeDialog(); renderKalender(); renderUpcomingEvents(); toast('Gelöscht');
 }
-// Startseite: die naechsten anstehenden Termine (auch laufende Mehrtages-Termine)
+// Startseite: die naechsten anstehenden Termine + Treffen (auch laufende Mehrtages-Termine)
 function renderUpcomingEvents(){
   const el=$('#upcomingEvents'); if(!el) return;
   const todayStr=new Date().toISOString().slice(0,10);
-  const upcoming=cache.termine
+  const upcoming=calAllItems()
     .filter(t=>(t.bis_datum||t.datum)>=todayStr)
     .sort((a,b)=>a.datum.localeCompare(b.datum)||(a.uhrzeit||'').localeCompare(b.uhrzeit||''))
     .slice(0,5);
@@ -836,14 +855,15 @@ function renderUpcomingEvents(){
   const monthNamesShort=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   el.innerHTML=upcoming.map(t=>{
     const d=new Date(t.datum+'T00:00:00');
-    const c=catFor(t.kategorie);
+    const color=t.isTreffen?TREFFEN_COLOR:catFor(t.kategorie).color;
+    const catLabel=t.isTreffen?'Treffen':catFor(t.kategorie).label;
     const zeitraum=t.bis_datum&&t.bis_datum!==t.datum?`${fmtDate(t.datum)}–${fmtDate(t.bis_datum)}`:fmtDate(t.datum);
     const zeit=t.uhrzeit?` · ${t.uhrzeit.slice(0,5)} Uhr`:'';
     const ort=t.ort?` · ${esc(t.ort)}`:'';
     return `<div class="ue-item">
       <div class="ue-date"><span class="ue-day">${d.getDate()}</span>${monthNamesShort[d.getMonth()]}</div>
       <div class="ue-body">
-        <div class="ue-title">${esc(t.titel)}<span class="ue-cat" style="background:${c.color}">${esc(c.label)}</span></div>
+        <div class="ue-title">${esc(t.titel)}<span class="ue-cat" style="background:${color}">${esc(catLabel)}</span></div>
         <div class="ue-meta">${zeitraum}${zeit}${ort}</div>
       </div>
     </div>`;
