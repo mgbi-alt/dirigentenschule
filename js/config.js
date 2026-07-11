@@ -96,6 +96,12 @@ function getNRWSchoolHolidays(year){
     h.push({from:'2026-07-20',to:'2026-09-01',name:'Sommerferien'});
     h.push({from:'2026-10-17',to:'2026-10-31',name:'Herbstferien'});
     h.push({from:'2026-12-23',to:'2027-01-06',name:'Weihnachtsferien'});
+  } else if(year===2027){
+    // Weihnachtsferien-Start 2027-01-01 bis 01-06 kommt bereits aus dem 2026-Eintrag oben.
+    h.push({from:'2027-03-22',to:'2027-04-03',name:'Osterferien'});
+    h.push({from:'2027-07-19',to:'2027-08-31',name:'Sommerferien'});
+    h.push({from:'2027-10-23',to:'2027-11-06',name:'Herbstferien'});
+    h.push({from:'2027-12-24',to:'2028-01-08',name:'Weihnachtsferien'});
   }
   return h;
 }
