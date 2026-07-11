@@ -52,6 +52,7 @@
   <nav id="mainNav">
     <button class="nav-btn active" data-page="start">Start</button>
     <button class="nav-btn" data-page="info">Info</button>
+    <button class="nav-btn" data-page="kalender">Kalender</button>
     <button class="nav-btn" data-page="stundenplan">Stundenplan</button>
     <button class="nav-btn" data-page="ha">Hausaufgaben</button>
     <button class="nav-btn" data-page="kontakte">Kontakte</button>
@@ -74,6 +75,11 @@
       <h1>Willkommen bei der AGUM Dirigentenschule.</h1>
     </div>
     <div class="toolbar">
+      <h2 class="section-h">Nächste Termine</h2>
+    </div>
+    <div id="upcomingEvents" class="upcoming-events"></div>
+
+    <div class="toolbar">
       <h2 class="section-h">Aktuelle Infos</h2>
       <div class="filters">
         <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
@@ -81,6 +87,21 @@
       </div>
     </div>
     <div id="announcementsList" class="ann-list"></div>
+  </section>
+
+  <!-- ========== KALENDER ========== -->
+  <section class="page" id="page-kalender">
+    <div class="toolbar">
+      <h2 class="section-h" id="calTitle">Kalender</h2>
+      <div class="filters">
+        <button class="btn-ghost" id="calPrevBtn">‹ Vorheriger Monat</button>
+        <button class="btn-ghost" id="calTodayBtn">Heute</button>
+        <button class="btn-ghost" id="calNextBtn">Nächster Monat ›</button>
+        <button class="btn-primary" id="calAddBtn" hidden>+ Termin</button>
+      </div>
+    </div>
+    <div id="calLegend" class="cal-legend"></div>
+    <div id="calGrid" class="cal-grid"></div>
   </section>
 
   <!-- ========== INFO (Pläne) ========== -->
@@ -167,6 +188,7 @@
       <button class="sub-btn" data-sub="hl-tests">Musiktheorie Tests</button>
       <button class="sub-btn" data-sub="gehoerbildung">Gehörbildung</button>
       <button class="sub-btn" data-sub="gb-tests">Gehörbildung Tests</button>
+      <button class="sub-btn" data-sub="pruefungen">Prüfungsübersicht</button>
     </div>
     <div class="subpage active" id="sub-harmonielehre">
       <h2 class="section-h">Musiktheorie</h2>
@@ -191,6 +213,11 @@
       <div class="toolbar"><h3 class="section-h sm">5-Minuten-Tests (%)</h3>
         <button class="btn-ghost tests-cols-btn" data-fach="gehoerbildung" hidden>Tests verwalten</button></div>
       <div class="table-wrap" id="gbTests"></div>
+    </div>
+    <div class="subpage" id="sub-pruefungen">
+      <h2 class="section-h">Prüfungsübersicht</h2>
+      <p class="muted">Als Prüfung markierte Unterrichtsstunden aus dem Stundenplan (bearbeitbar über den Stundenplan-Eintrag selbst).</p>
+      <div id="pruefungenList" class="table-wrap"></div>
     </div>
   </section>
 

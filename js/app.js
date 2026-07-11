@@ -34,7 +34,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{} };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{}, termine:[] };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -180,6 +180,7 @@ function applyRoleFlags(){
   $('#ptAddBtn').hidden = !currentPerson;
   $('#ptWeekGenBtn').hidden = !isAdmin;
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
+  $('#calAddBtn').hidden = !canEdit('kalender');
   $('#ttTimesBtn').hidden = !isAdmin;   // „Zeiten" nur für Admin
   // Lehrer/Schüler standardmäßig „Mein Plan", Admin „Gesamtplan"
   const tv=$('#ttView'); if(tv) tv.value = isAdmin ? 'all' : 'mine';
@@ -243,7 +244,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols,termine] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('sort').order('datum'),
@@ -258,12 +259,14 @@ async function loadAll(){
     SB.from('time_slots').select('*').order('sort'),
     SB.from('absences').select('*'),
     SB.from('test_columns').select('*').order('sort'),
+    SB.from('termine').select('*').order('datum'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
   cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[]; cache.testCols=testCols.data||[];
+  cache.termine=termine.data||[];
   cache.lastLogins = {};
   if(isAdmin){
     const { data:ll } = await SB.rpc('admin_last_logins');
@@ -281,7 +284,7 @@ function showPage(name){
 }
 function renderActivePage(){
   const active = $('.page.active')?.id.replace('page-','');
-  ({start:renderStart, ha:renderHA, info:renderInfoTab, stundenplan:renderStundenplan,
+  ({start:renderStart, ha:renderHA, info:renderInfoTab, kalender:renderKalender, stundenplan:renderStundenplan,
     kontakte:renderContacts, bewertung:renderBewertung, admin:renderAdmin}[active]||(()=>{}))();
 }
 
@@ -295,6 +298,7 @@ function renderStart(){
     {n:cache.tt.filter(r=>r.tag==='samstag'&&r.plan_id===basePlan()?.id).length, l:'Stunden (Grundplan)'},
   ];
   const sc=$('#startCards'); if(sc) sc.innerHTML=cards.map(c=>`<div class="stat-card"><div class="num">${c.n}</div><div class="lbl">${c.l}</div></div>`).join('');
+  renderUpcomingEvents();
 
   const canInfo=canEdit('infos');
   const today=new Date().toISOString().slice(0,10);
@@ -717,6 +721,135 @@ async function uploadSiteDoc(key, file){
   renderInfoTab(); toast('Hochgeladen');
 }
 
+// ---------- KALENDER ----------
+const pad2 = n => String(n).padStart(2,'0');
+let calYear=null, calMonth=null; // calMonth: 0-11
+function initCalState(){
+  if(calYear==null){ const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth(); }
+}
+function calShift(delta){
+  initCalState(); calMonth+=delta;
+  if(calMonth<0){ calMonth=11; calYear--; }
+  if(calMonth>11){ calMonth=0; calYear++; }
+  renderKalender();
+}
+function calToday(){ const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth(); renderKalender(); }
+function catFor(key){ return CAL_KATEGORIEN.find(c=>c.key===key)||CAL_KATEGORIEN[CAL_KATEGORIEN.length-1]; }
+function renderKalender(){
+  initCalState();
+  const edit=canEdit('kalender');
+  $('#calAddBtn').hidden=!edit;
+  const monthNames=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  $('#calTitle').textContent=`Kalender – ${monthNames[calMonth]} ${calYear}`;
+  $('#calLegend').innerHTML=CAL_KATEGORIEN.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('');
+
+  const first=new Date(calYear,calMonth,1);
+  const startDow=(first.getDay()+6)%7; // 0=Montag
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const prevDays=new Date(calYear,calMonth,0).getDate();
+  const cellsCount=Math.ceil((startDow+daysInMonth)/7)*7;
+  const todayStr=new Date().toISOString().slice(0,10);
+
+  const byDate={};
+  cache.termine.forEach(t=>{
+    const from=t.datum, to=t.bis_datum||t.datum;
+    let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00'); let guard=0;
+    while(d<=end && guard<400){
+      const ds=d.toISOString().slice(0,10);
+      (byDate[ds]=byDate[ds]||[]).push(t);
+      d.setDate(d.getDate()+1); guard++;
+    }
+  });
+
+  const dow=['Mo','Di','Mi','Do','Fr','Sa','So'];
+  let html=dow.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  for(let i=0;i<cellsCount;i++){
+    const dayNum=i-startDow+1;
+    let y=calYear, m=calMonth, dn=dayNum, otherMonth=false;
+    if(dayNum<1){ dn=prevDays+dayNum; m=calMonth-1; if(m<0){m=11;y--;} otherMonth=true; }
+    else if(dayNum>daysInMonth){ dn=dayNum-daysInMonth; m=calMonth+1; if(m>11){m=0;y++;} otherMonth=true; }
+    const ds=`${y}-${pad2(m+1)}-${pad2(dn)}`;
+    const isToday=ds===todayStr;
+    const evts=(byDate[ds]||[]).slice().sort((a,b)=>(a.uhrzeit||'').localeCompare(b.uhrzeit||''));
+    const evtHtml=evts.map(t=>{ const c=catFor(t.kategorie);
+      return `<div class="cal-evt" style="background:${c.color}" title="${esc(t.titel)}" onclick="event.stopPropagation();openTerminDialog('${t.id}')">${esc(t.titel)}</div>`; }).join('');
+    html+=`<div class="cal-day ${otherMonth?'other-month':''} ${isToday?'today':''}" ${edit?`onclick="openTerminDialog(null,'${ds}')"`:''}>
+      <div class="cal-daynum">${dn}</div>${evtHtml}</div>`;
+  }
+  $('#calGrid').innerHTML=html;
+}
+function catOptsHtml(sel){
+  return CAL_KATEGORIEN.map(c=>`<option value="${c.key}" ${c.key===sel?'selected':''}>${esc(c.label)}</option>`).join('');
+}
+function openTerminDialog(id, prefillDate){
+  const edit=canEdit('kalender'); if(!edit) return;
+  const t=id?cache.termine.find(x=>x.id===id):null;
+  const body=`<label>Titel<input id="tm_titel" value="${esc(t?.titel||'')}" placeholder="z.B. Aufführung Oetkerhalle"></label>
+    <label>Kategorie<select id="tm_kat">${catOptsHtml(t?.kategorie||'sonstiges')}</select></label>
+    <label>Datum<input type="date" id="tm_datum" value="${esc(t?.datum||prefillDate||'')}"></label>
+    <label>Uhrzeit (optional)<input type="time" id="tm_uhrzeit" value="${esc(t?.uhrzeit||'')}"></label>
+    <label>Enddatum (optional, für mehrtägige Termine)<input type="date" id="tm_bisdatum" value="${esc(t?.bis_datum||'')}"></label>
+    <label>Bis-Uhrzeit (optional)<input type="time" id="tm_bisuhrzeit" value="${esc(t?.bis_uhrzeit||'')}"></label>
+    <label>Ort<input id="tm_ort" value="${esc(t?.ort||'')}" placeholder="z.B. Oetkerhalle Bielefeld"></label>
+    <label>Beschreibung<input id="tm_besch" value="${esc(t?.beschreibung||'')}"></label>
+    ${t?`<button type="button" class="btn-ghost" onclick="delTermin('${t.id}')">Termin löschen</button>`:''}`;
+  openDialog(t?'Termin bearbeiten':'Termin hinzufügen', body, async()=>{
+    const datum=$('#tm_datum').value;
+    const titel=$('#tm_titel').value.trim();
+    if(!titel||!datum){ toast('Titel und Datum sind Pflicht','err'); return false; }
+    const rec={
+      titel, datum, kategorie:$('#tm_kat').value,
+      uhrzeit:$('#tm_uhrzeit').value||null,
+      bis_datum:$('#tm_bisdatum').value||null,
+      bis_uhrzeit:$('#tm_bisuhrzeit').value||null,
+      ort:$('#tm_ort').value.trim()||null,
+      beschreibung:$('#tm_besch').value.trim()||null,
+    };
+    if(t){
+      const {error}=await SB.from('termine').update(rec).eq('id',t.id);
+      if(error){ toast(error.message,'err'); return false; }
+      Object.assign(t,rec);
+    }else{
+      const {data,error}=await SB.from('termine').insert(rec).select().single();
+      if(error){ toast(error.message,'err'); return false; }
+      cache.termine.push(data);
+    }
+    renderKalender(); renderUpcomingEvents(); toast('Gespeichert');
+  });
+}
+async function delTermin(id){
+  if(!confirm('Diesen Termin löschen?')) return;
+  const {error}=await SB.from('termine').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.termine=cache.termine.filter(t=>t.id!==id);
+  closeDialog(); renderKalender(); renderUpcomingEvents(); toast('Gelöscht');
+}
+// Startseite: die naechsten anstehenden Termine (auch laufende Mehrtages-Termine)
+function renderUpcomingEvents(){
+  const el=$('#upcomingEvents'); if(!el) return;
+  const todayStr=new Date().toISOString().slice(0,10);
+  const upcoming=cache.termine
+    .filter(t=>(t.bis_datum||t.datum)>=todayStr)
+    .sort((a,b)=>a.datum.localeCompare(b.datum)||(a.uhrzeit||'').localeCompare(b.uhrzeit||''))
+    .slice(0,5);
+  if(!upcoming.length){ el.innerHTML='<p class="ue-empty">Keine anstehenden Termine.</p>'; return; }
+  const monthNamesShort=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  el.innerHTML=upcoming.map(t=>{
+    const d=new Date(t.datum+'T00:00:00');
+    const c=catFor(t.kategorie);
+    const zeitraum=t.bis_datum&&t.bis_datum!==t.datum?`${fmtDate(t.datum)}–${fmtDate(t.bis_datum)}`:fmtDate(t.datum);
+    const zeit=t.uhrzeit?` · ${t.uhrzeit.slice(0,5)} Uhr`:'';
+    const ort=t.ort?` · ${esc(t.ort)}`:'';
+    return `<div class="ue-item">
+      <div class="ue-date"><span class="ue-day">${d.getDate()}</span>${monthNamesShort[d.getMonth()]}</div>
+      <div class="ue-body">
+        <div class="ue-title">${esc(t.titel)}<span class="ue-cat" style="background:${c.color}">${esc(c.label)}</span></div>
+        <div class="ue-meta">${zeitraum}${zeit}${ort}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // ---------- STUNDENPLAN ----------
 function basePlan(){ return cache.plans.find(p=>p.is_base)||cache.plans[0]; }
 function currentPlanId(){ const v=$('#ttPlan')?.value; return v||basePlan()?.id; }
@@ -848,7 +981,8 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const changed = isNew || (baseR && ['ueber','stu','leh','kla','raum'].some(ch));
     const cls = [cancelled?'tt-cancelled':'', isNew?'tt-new':(changed?'tt-changed':''), edit?'editable':''].filter(Boolean).join(' ');
     const badge = cancelled?'<span class="tt-badge">entfällt</span>':(isNew?'<span class="tt-badge">neu</span>':'');
-    return `<div class="tt-cell ${cls}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
+    const pruefBadge = r.pruefung?'<span class="tt-badge tt-badge-pruef">Prüfung</span>':'';
+    return `<div class="tt-cell ${cls}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${pruefBadge}${lines.join('')}</div>`;
   };
   const removedCell=r=>{
     const c=lessonFields(r);
@@ -1184,7 +1318,8 @@ function lessonForm(r){
     <label id="wrapKlaFree" style="display:none">Klavierbegleitung-Freitext<input id="tl_kla" value="${esc(r.klavier||'')}"></label>
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
       <datalist id="roomsDatalist">${roomOpts}</datalist></label>
-    <label class="chk"><input type="checkbox" id="tl_entf" ${r.entfaellt?'checked':''}> Stunde entfällt</label>`;
+    <label class="chk"><input type="checkbox" id="tl_entf" ${r.entfaellt?'checked':''}> Stunde entfällt</label>
+    <label class="chk"><input type="checkbox" id="tl_pruef" ${r.pruefung?'checked':''}> Prüfung</label>`;
 }
 function clearMulti(id){ const el=$('#'+id); if(el) [...el.options].forEach(o=>o.selected=false); }
 function updateLessonDialogVis(){
@@ -1227,7 +1362,7 @@ function readLessonForm(){
     klavier_ids: kbHidden?null:(kids.length?kids:null),
     klavier: (kbHidden||!rawKb.includes('__other__')) ? null : ($('#tl_kla').value.trim()||null),
     raum:$('#tl_raum').value.trim()||null,
-    entfaellt:$('#tl_entf').checked };
+    entfaellt:$('#tl_entf').checked, pruefung:$('#tl_pruef').checked };
 }
 async function ensureRoom(name){
   if(!name || cache.rooms.some(r=>r.name===name)) return;
@@ -1327,6 +1462,27 @@ function renderBewertung(){
   $$('.tests-cols-btn').forEach(b=>b.hidden=!canEdit('tests'));
   renderTests('harmonielehre','#hlTests');   renderGrades('harmonielehre','#hlGrades');
   renderTests('gehoerbildung','#gbTests');   renderGrades('gehoerbildung','#gbGrades');
+  renderPruefungen();
+}
+// Alle als Pruefung markierten Stundenplan-Eintraege ueber alle Treffen (inkl. Grundplan), nach Datum sortiert.
+function renderPruefungen(){
+  const el=$('#pruefungenList'); if(!el) return;
+  const rows=cache.tt.filter(r=>r.pruefung);
+  if(!rows.length){ el.innerHTML='<p class="muted" style="padding:14px">Keine Prüfungen markiert.</p>'; return; }
+  const withPlan=rows.map(r=>({r, plan:cache.plans.find(p=>p.id===r.plan_id)}))
+    .sort((a,b)=>{
+      const da=a.plan?.datum||'', db=b.plan?.datum||'';
+      return da.localeCompare(db) || (a.r.zeit_sort||0)-(b.r.zeit_sort||0);
+    });
+  const head=`<tr><th>Treffen</th><th>Tag</th><th>Zeit</th><th>Fach</th><th class="name">Titel/Schüler</th><th>Lehrer</th><th>Raum</th></tr>`;
+  const body=withPlan.map(({r,plan})=>{
+    const planLabel=plan?`${esc(plan.name)}${plan.datum?' · '+esc(treffenDateLabel(plan)):''}`:'–';
+    return `<tr ${canEdit('stundenplan')?`class="cell-edit" onclick="editLesson('${r.id}')"`:''}>
+      <td>${planLabel}</td><td>${r.tag==='freitag'?'Freitag':'Samstag'}</td><td>${esc(r.zeit)}</td>
+      <td>${esc(r.fach)}</td><td class="name">${esc(schuelerDisplay(r)||r.ueberschrift||'')}</td>
+      <td>${esc(lehrerDisplay(r))}</td><td>${esc(r.raum||'')}</td></tr>`;
+  }).join('');
+  el.innerHTML=`<table>${head}${body}</table>`;
 }
 function testColsFor(fach){
   const map=new Map();
@@ -1758,6 +1914,10 @@ function bind(){
   $('#ptAddBtn').onclick=createPractice;
   $('#ptWeekGenBtn').onclick=genPracticeWeek;
   $('#ttAddBtn').onclick=addLesson;
+  $('#calPrevBtn').onclick=()=>calShift(-1);
+  $('#calNextBtn').onclick=()=>calShift(1);
+  $('#calTodayBtn').onclick=calToday;
+  $('#calAddBtn').onclick=()=>openTerminDialog(null,new Date().toISOString().slice(0,10));
   $('#ttResetBtn').onclick=()=>resetPlanToBase(currentPlanId());
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;

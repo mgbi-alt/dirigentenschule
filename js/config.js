@@ -29,6 +29,15 @@ const EDIT_AREAS = [
   { key: 'infos',       label: 'Infos (Startseite)' },
   { key: 'stundenplan', label: 'Stundenplan' },
   { key: 'abmeldungen', label: 'Abmeldungen' },
+  { key: 'kalender',    label: 'Kalender' },
+];
+
+// Kalender-Kategorien (Termine): key -> Label/Farbe
+const CAL_KATEGORIEN = [
+  { key: 'auffuehrung', label: 'Aufführung',  color: '#7a3b2e' },
+  { key: 'probe',       label: 'Probe',       color: '#4c7a8c' },
+  { key: 'pruefung',    label: 'Prüfung',     color: '#a03b3b' },
+  { key: 'sonstiges',   label: 'Sonstiges',   color: '#8a8060' },
 ];
 
 // Spalten-Reihenfolge im Stundenplan
