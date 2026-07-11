@@ -34,7 +34,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{} };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -42,6 +42,7 @@ const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fullName = p => p ? `${p.nachname}, ${p.vorname||''}`.replace(/,\s*$/,'') : '';
 const fmtDate = d => d ? new Date(d).toLocaleDateString('de-DE') : '';
+const fmtDateTime = d => d ? new Date(d).toLocaleString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
 // wie fmtDate, aber Platzhalterdaten (Jahr < 2000, z.B. importierte Kapitel ohne echtes Datum) werden ausgeblendet
 const fmtDateOpt = d => (d && new Date(d).getFullYear() >= 2000) ? fmtDate(d) : '';
 function toast(msg,type='ok'){
@@ -263,6 +264,11 @@ async function loadAll(){
   cache.status=status.data||[]; cache.tests=tests.data||[]; cache.grades=grades.data||[];
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
   cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[]; cache.testCols=testCols.data||[];
+  cache.lastLogins = {};
+  if(isAdmin){
+    const { data:ll } = await SB.rpc('admin_last_logins');
+    (ll||[]).forEach(r=>{ if(r.last_sign_in_at) cache.lastLogins[r.person_id]=r.last_sign_in_at; });
+  }
 }
 const personById = id => cache.people.find(p=>p.id===id);
 const students = () => cache.people.filter(p=>hasRole(p,'schueler')&&p.aktiv);
@@ -295,7 +301,8 @@ function renderStart(){
   const roleLabelMap=Object.fromEntries(ROLES.map(r=>[r.key,r.label]));
   const absLi=a=>{ const p=personById(a.person_id);
     const rolle=p?(roleLabelMap[primaryRole(p)]||'Schüler'):'Schüler';
-    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; };
+    const tage=a.tage&&a.tage!=='fr_sa'?`, ${absTageLabel(a.tage)}`:'';
+    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle}${tage})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; };
   const infoHtml=a=>`<div class="ann-block"><h4>${esc(a.titel)} ${a.datum?`<span class="date">${fmtDate(a.datum)}</span>`:''}</h4>
       <div class="ann-body">${sanitizeHtml(a.text)}</div>
       ${canInfo?`<div class="ann-actions"><button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
@@ -770,7 +777,19 @@ function lessonIsMine(r, token){
   return [r.schueler,r.lehrer,r.klavier].some(x=>x&&x.toLowerCase().includes(t));
 }
 function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
-function absentSetForPlan(planId){ return new Set(cache.absences.filter(a=>a.plan_id===planId).map(a=>a.person_id)); }
+// tage: 'fr'=nur Freitag, 'sa'=nur Samstag, 'fr_sa'=beide (Standard)
+function absTageLabel(t){ return t==='fr'?'Freitag':t==='sa'?'Samstag':'Fr+Sa'; }
+function absCoversDay(a, day){
+  const t=a.tage||'fr_sa';
+  if(t==='fr_sa') return true;
+  if(t==='fr') return day==='freitag';
+  if(t==='sa') return day==='samstag';
+  return true;
+}
+// day optional ('freitag'/'samstag'): ohne Angabe alle Abmeldungen des Treffens, unabhaengig vom Tag
+function absentSetForPlan(planId, day){
+  return new Set(cache.absences.filter(a=>a.plan_id===planId && (!day || absCoversDay(a,day))).map(a=>a.person_id));
+}
 function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===planId); }
 function sortedAbsences(planId){
   const staff=p=>p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung')||hasRole(p,'admin'))?0:1;
@@ -802,7 +821,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
   const slots=[...new Set(rows.concat(baseRows).map(r=>r.zeit))].sort((a,b)=>slotSortFor(a)-slotSortFor(b));
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
-  const absentSet = absentSetForPlan(planId);
+  const absentSet = absentSetForPlan(planId, day);
   const line=(prefix,cur,old,changed,cls)=> changed
     ? `<div class="tt-meta tt-chg">${prefix}${old?`<s>${esc(old)}</s> `:''}${cur?esc(cur):'<em>–</em>'}</div>`
     : (cur?`<div class="${cls||'tt-meta'}">${prefix}${esc(cur)}</div>`:'');
@@ -1046,17 +1065,27 @@ async function delTreffen(id){
   cache.absences=cache.absences.filter(a=>a.plan_id!==id);
   renderAdmin(); fillPlanSelect(); toast('Gelöscht');
 }
+function tageSelectHtml(id, selected){
+  const sel=selected||'fr_sa';
+  return `<select id="${id}">
+    <option value="fr_sa" ${sel==='fr_sa'?'selected':''}>Fr+Sa</option>
+    <option value="fr" ${sel==='fr'?'selected':''}>nur Freitag</option>
+    <option value="sa" ${sel==='sa'?'selected':''}>nur Samstag</option>
+  </select>`;
+}
 function manageAbsences(planId){
   const plan=cache.plans.find(p=>p.id===planId);
   const list=sortedAbsences(planId);
   const rows=list.map(a=>{ const p=personById(a.person_id);
-    return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${a.grund?` – ${esc(a.grund)}`:''}</span>
+    const tageBadge=a.tage&&a.tage!=='fr_sa'?` <span class="muted">(${absTageLabel(a.tage)})</span>`:'';
+    return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${tageBadge}${a.grund?` – ${esc(a.grund)}`:''}</span>
       <button type="button" class="btn-ghost" onclick="delAbsence('${a.id}','${planId}')">✕</button></div>`; }).join('');
   const peopleOpts=cache.people.filter(p=>p.aktiv).sort(byName)
     .map(p=>`<option value="${p.id}">${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`).join('');
   const body=`<div id="absList">${rows||'<p class="muted">Keine Abmeldungen.</p>'}</div>
     <div class="gc-row" style="margin-top:8px">
       <select id="absPerson" style="flex:1">${peopleOpts}</select>
+      ${tageSelectHtml('absTage')}
       <input id="absGrund" placeholder="Grund" style="width:120px">
       <button type="button" class="btn-primary" onclick="addAbsence('${planId}')">+</button>
     </div>`;
@@ -1080,11 +1109,13 @@ function addAbsenceDialog(){
     .map(p=>`<option value="${p.id}">${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`).join('');
   const body=`<label>Treffen<select id="ab_plan">${tOpts}</select></label>
     <label>Person<select id="ab_person">${pOpts}</select></label>
+    <label>Tag${tageSelectHtml('ab_tage')}</label>
     <label>Grund<input id="ab_grund" placeholder="z.B. krank"></label>`;
   openDialog('Abmeldung hinzufügen', body, async()=>{
     const plan_id=$('#ab_plan').value, person_id=$('#ab_person').value, grund=$('#ab_grund').value.trim()||null;
+    const tage=$('#ab_tage').value;
     if(!plan_id||!person_id){ toast('Treffen/Person fehlt','err'); return false; }
-    const {data,error}=await SB.from('absences').upsert({plan_id,person_id,grund},{onConflict:'plan_id,person_id'}).select().single();
+    const {data,error}=await SB.from('absences').upsert({plan_id,person_id,grund,tage},{onConflict:'plan_id,person_id'}).select().single();
     if(error){ toast(error.message,'err'); return false; }
     const i=cache.absences.findIndex(a=>a.plan_id===plan_id&&a.person_id===person_id);
     if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
@@ -1094,7 +1125,8 @@ function addAbsenceDialog(){
 async function addAbsence(planId){
   const pid=$('#absPerson').value; if(!pid) return;
   const grund=$('#absGrund').value.trim();
-  const {data,error}=await SB.from('absences').upsert({plan_id:planId,person_id:pid,grund:grund||null},{onConflict:'plan_id,person_id'}).select().single();
+  const tage=$('#absTage').value;
+  const {data,error}=await SB.from('absences').upsert({plan_id:planId,person_id:pid,grund:grund||null,tage},{onConflict:'plan_id,person_id'}).select().single();
   if(error){ toast(error.message,'err'); return; }
   const i=cache.absences.findIndex(a=>a.plan_id===planId&&a.person_id===pid);
   if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
@@ -1545,10 +1577,12 @@ function renderPersonAdmin(){
     .sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
   $('#personAdminList').innerHTML = list.map(p=>{
     const pills=personRoles(p).map(r=>`<span class="role-pill">${roleLabel[r]||r}</span>`).join(' ');
+    const lastLogin=cache.lastLogins[p.id];
     return `<div class="person-item ${p.aktiv?'':'inactive'}">
       <span class="pi-name">${esc(fullName(p))}</span>
       <span class="muted pi-email">${esc(p.email||'—')}</span>
       <span class="pi-roles">${pills}${p.aktiv?'':' <span class="role-pill">inaktiv</span>'}</span>
+      <span class="muted pi-lastlogin" title="Zuletzt online">${lastLogin?esc(fmtDateTime(lastLogin)):'noch nie angemeldet'}</span>
       ${p.email?`<button class="btn-ghost" onclick="sendWelcomeMail('${p.id}')">Willkommensmail</button>`:''}
       <button class="btn-ghost" style="margin-left:${p.email?'0':'auto'}" onclick="editPerson('${p.id}')">Bearbeiten</button>
     </div>`;

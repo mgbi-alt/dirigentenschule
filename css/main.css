@@ -184,6 +184,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .pi-name{font-weight:600;min-width:160px}
 .pi-email{min-width:180px}
 .pi-roles{display:flex;gap:4px;flex-wrap:wrap}
+.pi-lastlogin{font-size:12px}
 #dlgBody .dlg-group{border-top:1px dashed var(--border);padding-top:8px;display:flex;flex-direction:column;gap:6px}
 #dlgBody .dlg-group b{font-size:12px;color:var(--text2)}
 .pi-active{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text2)}
