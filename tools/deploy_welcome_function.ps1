@@ -24,9 +24,10 @@ $CliExe   = Join-Path $CliDir 'supabase.exe'
 if (-not (Test-Path $CliExe)) {
     Write-Host "Supabase-CLI wird einmalig heruntergeladen..."
     New-Item -ItemType Directory -Force -Path $CliDir | Out-Null
-    $tarPath = Join-Path $CliDir 'supabase.tar.gz'
+    $tarPath = Join-Path $CliDir 'supabase_windows_amd64.tar.gz'
     & gh release download --repo supabase/cli --pattern "supabase_windows_amd64.tar.gz" --dir $CliDir --clobber
     if ($LASTEXITCODE -ne 0) { Write-Error "Download fehlgeschlagen (ist die GitHub-CLI 'gh' installiert und eingeloggt?)"; exit 1 }
+    if (-not (Test-Path $tarPath)) { Write-Error "Download-Datei nicht gefunden: $tarPath"; exit 1 }
     tar -xzf $tarPath -C $CliDir
 }
 
