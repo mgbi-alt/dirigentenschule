@@ -743,15 +743,17 @@ const TREFFEN_COLOR='#4c7a8c';
 function calAllItems(){
   const termine=cache.termine.map(t=>({...t, isTreffen:false}));
   const toISO=dateISO;
-  // plan.datum ist immer das Samstags-Datum (siehe treffenDateLabel); je nach "tage" den
-  // Freitag (Datum-1) mit einbeziehen bzw. bei "nur Freitag" ganz auf den Freitag verschieben.
+  // plan.datum ist bei "fr_sa" das Samstags-Datum, der Freitag ergibt sich als Datum-1
+  // (siehe treffenDateLabel). Bei "nur Freitag"/"nur Samstag" ist das Datum bereits der
+  // jeweilige Tag selbst -- KEIN Verschieben (treffenDateLabel gibt dort einfach das Datum aus).
   const treffen=cache.plans.filter(p=>!p.is_base && p.datum).map(p=>{
-    const sa=new Date(p.datum+'T00:00:00');
-    const fr=new Date(sa); fr.setDate(sa.getDate()-1);
     const tage=p.tage||'fr_sa';
     let von=p.datum, bis=p.datum;
-    if(tage==='fr_sa'){ von=toISO(fr); bis=p.datum; }
-    else if(tage==='fr'){ von=toISO(fr); bis=toISO(fr); }
+    if(tage==='fr_sa'){
+      const sa=new Date(p.datum+'T00:00:00');
+      const fr=new Date(sa); fr.setDate(sa.getDate()-1);
+      von=toISO(fr); bis=p.datum;
+    }
     return {
       id:p.id, titel:p.name?`Treffen ${p.name}`:'Treffen', datum:von, bis_datum:bis!==von?bis:null,
       uhrzeit:null, ort:null, kategorie:'treffen', isTreffen:true,
