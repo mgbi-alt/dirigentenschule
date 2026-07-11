@@ -81,20 +81,20 @@ function getNRWHolidays(year){
   movable.forEach(([d,n])=>result[`${year}-${fmt(d)}`]=n);
   return result;
 }
-// Schulferien NRW (feste Zeiträume, jährlich vom Land veröffentlicht – bei Bedarf ergänzen)
+// Schulferien NRW (Quelle: schulministerium.nrw, Ferienordnung fuer NRW bis Schuljahr 2029/30 -- bei Bedarf ergaenzen)
 function getNRWSchoolHolidays(year){
   const h=[];
   if(year===2025){
     h.push({from:'2025-01-01',to:'2025-01-03',name:'Weihnachtsferien'});
     h.push({from:'2025-03-24',to:'2025-04-05',name:'Osterferien'});
-    h.push({from:'2025-06-23',to:'2025-07-04',name:'Sommerferien'});
-    h.push({from:'2025-10-06',to:'2025-10-17',name:'Herbstferien'});
-    h.push({from:'2025-12-22',to:'2026-01-05',name:'Weihnachtsferien'});
+    h.push({from:'2025-07-14',to:'2025-08-26',name:'Sommerferien'});
+    h.push({from:'2025-10-13',to:'2025-10-25',name:'Herbstferien'});
+    h.push({from:'2025-12-22',to:'2026-01-06',name:'Weihnachtsferien'});
   } else if(year===2026){
-    h.push({from:'2026-01-01',to:'2026-01-05',name:'Weihnachtsferien'});
+    h.push({from:'2026-01-01',to:'2026-01-06',name:'Weihnachtsferien'});
     h.push({from:'2026-03-30',to:'2026-04-11',name:'Osterferien'});
     h.push({from:'2026-07-20',to:'2026-09-01',name:'Sommerferien'});
-    h.push({from:'2026-10-05',to:'2026-10-17',name:'Herbstferien'});
+    h.push({from:'2026-10-17',to:'2026-10-31',name:'Herbstferien'});
     h.push({from:'2026-12-23',to:'2027-01-06',name:'Weihnachtsferien'});
   }
   return h;
