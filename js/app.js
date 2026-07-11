@@ -971,6 +971,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const lehR=tokensHtml(r.lehrer_ids, r.lehrer, absentSet, 'tt-absent-t');
     const klaR=tokensHtml(r.klavier_ids, r.klavier, absentSet, 'tt-absent-t');
     const lines=[];
+    if(r.pruefung) lines.push('<div class="tt-pruef-tag">Prüfung</div>');
     if(r.fach && r.fach!=='Pause' && !FACH_ORDER.includes(r.fach)) lines.push(`<div class="tt-fachname">${esc(r.fach)}</div>`);
     if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
     if(stuR||ch('stu'))      lines.push(lineH('', stuR, c.stu, b.stu, ch('stu'), 'tt-stu'));
@@ -981,8 +982,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const changed = isNew || (baseR && ['ueber','stu','leh','kla','raum'].some(ch));
     const cls = [cancelled?'tt-cancelled':'', isNew?'tt-new':(changed?'tt-changed':''), edit?'editable':''].filter(Boolean).join(' ');
     const badge = cancelled?'<span class="tt-badge">entfällt</span>':(isNew?'<span class="tt-badge">neu</span>':'');
-    const pruefBadge = r.pruefung?'<span class="tt-badge tt-badge-pruef">Prüfung</span>':'';
-    return `<div class="tt-cell ${cls}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${pruefBadge}${lines.join('')}</div>`;
+    return `<div class="tt-cell ${cls}" ${edit?`onclick="editLesson('${r.id}')"`:''}>${badge}${lines.join('')}</div>`;
   };
   const removedCell=r=>{
     const c=lessonFields(r);

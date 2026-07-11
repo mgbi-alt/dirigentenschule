@@ -274,7 +274,8 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tt-chg{color:var(--accent2)}
 .tt-chg s,.tt-removed s{color:var(--text3)}
 .tt-badge{position:absolute;top:4px;right:5px;font-size:9px;padding:0 6px;border-radius:8px;background:rgba(122,59,46,.1);color:var(--accent2)}
-.tt-badge-pruef{position:absolute;top:4px;left:5px;right:auto;background:#a03b3b;color:#fff}
+.tt-cell>.tt-pruef-tag{display:inline-block;align-self:flex-start;font-size:9px;font-weight:700;padding:1px 7px;
+  border-radius:8px;background:#a03b3b;color:#fff;text-transform:uppercase;letter-spacing:.3px;min-height:0}
 .tt-leg-chg,.tt-leg-new,.tt-leg-rem{padding:0 6px;border-radius:4px}
 .tt-leg-chg{border-left:3px solid var(--accent)}
 .tt-leg-new{border-left:3px solid var(--green)}
