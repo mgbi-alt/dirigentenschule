@@ -1088,7 +1088,7 @@ function addAbsenceDialog(){
     if(error){ toast(error.message,'err'); return false; }
     const i=cache.absences.findIndex(a=>a.plan_id===plan_id&&a.person_id===person_id);
     if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
-    renderStart(); toast('Abmeldung gespeichert');
+    renderStart(); renderStundenplan(); toast('Abmeldung gespeichert');
   });
 }
 async function addAbsence(planId){
@@ -1098,14 +1098,14 @@ async function addAbsence(planId){
   if(error){ toast(error.message,'err'); return; }
   const i=cache.absences.findIndex(a=>a.plan_id===planId&&a.person_id===pid);
   if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
-  manageAbsences(planId); renderAdmin();
+  manageAbsences(planId); renderAdmin(); renderStundenplan();
 }
 async function delAbsence(id, planId){
   const {error}=await SB.from('absences').delete().eq('id',id);
   if(error){ toast(error.message,'err'); return; }
   cache.absences=cache.absences.filter(a=>a.id!==id);
   document.querySelector(`#absList .gc-row[data-id="${id}"]`)?.remove();
-  renderAdmin();
+  renderAdmin(); renderStundenplan();
 }
 const allActive=()=>cache.people.filter(p=>p.aktiv);
 function peopleSelectOpts(pool, selectedIds){
