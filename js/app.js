@@ -992,6 +992,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const klaR=tokensHtml(r.klavier_ids, r.klavier, absentSet, 'tt-absent-t');
     const lines=[];
     if(r.pruefung) lines.push('<div class="tt-pruef-tag">Prüfung</div>');
+    if(r.test) lines.push('<div class="tt-pruef-tag tt-test-tag">Test</div>');
     if(r.fach && r.fach!=='Pause' && !FACH_ORDER.includes(r.fach)) lines.push(`<div class="tt-fachname">${esc(r.fach)}</div>`);
     if(c.ueber||ch('ueber')) lines.push(line('', c.ueber, b.ueber, ch('ueber'), 'tt-head'));
     if(stuR||ch('stu'))      lines.push(lineH('', stuR, c.stu, b.stu, ch('stu'), 'tt-stu'));
@@ -1339,7 +1340,8 @@ function lessonForm(r){
     <label>Raum<input id="tl_raum" list="roomsDatalist" value="${esc(r.raum||'')}">
       <datalist id="roomsDatalist">${roomOpts}</datalist></label>
     <label class="chk"><input type="checkbox" id="tl_entf" ${r.entfaellt?'checked':''}> Stunde entfällt</label>
-    <label class="chk"><input type="checkbox" id="tl_pruef" ${r.pruefung?'checked':''}> Prüfung</label>`;
+    <label class="chk"><input type="checkbox" id="tl_pruef" ${r.pruefung?'checked':''}> Prüfung</label>
+    <label class="chk"><input type="checkbox" id="tl_test" ${r.test?'checked':''}> Test</label>`;
 }
 function clearMulti(id){ const el=$('#'+id); if(el) [...el.options].forEach(o=>o.selected=false); }
 function updateLessonDialogVis(){
@@ -1382,7 +1384,7 @@ function readLessonForm(){
     klavier_ids: kbHidden?null:(kids.length?kids:null),
     klavier: (kbHidden||!rawKb.includes('__other__')) ? null : ($('#tl_kla').value.trim()||null),
     raum:$('#tl_raum').value.trim()||null,
-    entfaellt:$('#tl_entf').checked, pruefung:$('#tl_pruef').checked };
+    entfaellt:$('#tl_entf').checked, pruefung:$('#tl_pruef').checked, test:$('#tl_test').checked };
 }
 async function ensureRoom(name){
   if(!name || cache.rooms.some(r=>r.name===name)) return;
@@ -1487,18 +1489,19 @@ function renderBewertung(){
 // Alle als Pruefung markierten Stundenplan-Eintraege ueber alle Treffen (inkl. Grundplan), nach Datum sortiert.
 function renderPruefungen(){
   const el=$('#pruefungenList'); if(!el) return;
-  const rows=cache.tt.filter(r=>r.pruefung);
-  if(!rows.length){ el.innerHTML='<p class="muted" style="padding:14px">Keine Prüfungen markiert.</p>'; return; }
+  const rows=cache.tt.filter(r=>r.pruefung||r.test);
+  if(!rows.length){ el.innerHTML='<p class="muted" style="padding:14px">Keine Prüfungen oder Tests markiert.</p>'; return; }
   const withPlan=rows.map(r=>({r, plan:cache.plans.find(p=>p.id===r.plan_id)}))
     .sort((a,b)=>{
       const da=a.plan?.datum||'', db=b.plan?.datum||'';
       return da.localeCompare(db) || (a.r.zeit_sort||0)-(b.r.zeit_sort||0);
     });
-  const head=`<tr><th>Treffen</th><th>Tag</th><th>Zeit</th><th>Fach</th><th class="name">Titel/Schüler</th><th>Lehrer</th><th>Raum</th></tr>`;
+  const head=`<tr><th>Typ</th><th>Treffen</th><th>Tag</th><th>Zeit</th><th>Fach</th><th class="name">Titel/Schüler</th><th>Lehrer</th><th>Raum</th></tr>`;
   const body=withPlan.map(({r,plan})=>{
     const planLabel=plan?`${esc(plan.name)}${plan.datum?' · '+esc(treffenDateLabel(plan)):''}`:'–';
+    const typ=[r.pruefung?'Prüfung':'', r.test?'Test':''].filter(Boolean).join(' + ');
     return `<tr ${canEdit('stundenplan')?`class="cell-edit" onclick="editLesson('${r.id}')"`:''}>
-      <td>${planLabel}</td><td>${r.tag==='freitag'?'Freitag':'Samstag'}</td><td>${esc(r.zeit)}</td>
+      <td>${esc(typ)}</td><td>${planLabel}</td><td>${r.tag==='freitag'?'Freitag':'Samstag'}</td><td>${esc(r.zeit)}</td>
       <td>${esc(r.fach)}</td><td class="name">${esc(schuelerDisplay(r)||r.ueberschrift||'')}</td>
       <td>${esc(lehrerDisplay(r))}</td><td>${esc(r.raum||'')}</td></tr>`;
   }).join('');
