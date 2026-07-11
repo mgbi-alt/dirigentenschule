@@ -723,6 +723,9 @@ async function uploadSiteDoc(key, file){
 
 // ---------- KALENDER ----------
 const pad2 = n => String(n).padStart(2,'0');
+// Lokales Kalenderdatum als "JJJJ-MM-TT" -- NICHT toISOString() nutzen, die rechnet auf UTC
+// um und verschiebt das Datum in Zeitzonen vor UTC (z.B. Deutschland) um einen Tag zurueck.
+const dateISO = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 let calYear=null, calMonth=null; // calMonth: 0-11
 function initCalState(){
   if(calYear==null){ const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth(); }
@@ -739,7 +742,7 @@ const TREFFEN_COLOR='#4c7a8c';
 // Termine (editierbar) + Treffen aus der Stundenplan-Verwaltung (nur lesend, eigenes Datum) zusammengeführt.
 function calAllItems(){
   const termine=cache.termine.map(t=>({...t, isTreffen:false}));
-  const toISO=d=>d.toISOString().slice(0,10);
+  const toISO=dateISO;
   // plan.datum ist immer das Samstags-Datum (siehe treffenDateLabel); je nach "tage" den
   // Freitag (Datum-1) mit einbeziehen bzw. bei "nur Freitag" ganz auf den Freitag verschieben.
   const treffen=cache.plans.filter(p=>!p.is_base && p.datum).map(p=>{
@@ -770,14 +773,14 @@ function renderKalender(){
   const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
   const prevDays=new Date(calYear,calMonth,0).getDate();
   const cellsCount=Math.ceil((startDow+daysInMonth)/7)*7;
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=dateISO(new Date());
 
   const byDate={};
   calAllItems().forEach(t=>{
     const from=t.datum, to=t.bis_datum||t.datum;
     let d=new Date(from+'T00:00:00'); const end=new Date(to+'T00:00:00'); let guard=0;
     while(d<=end && guard<400){
-      const ds=d.toISOString().slice(0,10);
+      const ds=dateISO(d);
       (byDate[ds]=byDate[ds]||[]).push(t);
       d.setDate(d.getDate()+1); guard++;
     }
@@ -857,7 +860,7 @@ async function delTermin(id){
 // Startseite: die naechsten anstehenden Termine + Treffen (auch laufende Mehrtages-Termine)
 function renderUpcomingEvents(){
   const el=$('#upcomingEvents'); if(!el) return;
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=dateISO(new Date());
   const upcoming=calAllItems()
     .filter(t=>(t.bis_datum||t.datum)>=todayStr)
     .sort((a,b)=>a.datum.localeCompare(b.datum)||(a.uhrzeit||'').localeCompare(b.uhrzeit||''))
@@ -1954,7 +1957,7 @@ function bind(){
   $('#calPrevBtn').onclick=()=>calShift(-1);
   $('#calNextBtn').onclick=()=>calShift(1);
   $('#calTodayBtn').onclick=calToday;
-  $('#calAddBtn').onclick=()=>openTerminDialog(null,new Date().toISOString().slice(0,10));
+  $('#calAddBtn').onclick=()=>openTerminDialog(null,dateISO(new Date()));
   $('#ttResetBtn').onclick=()=>resetPlanToBase(currentPlanId());
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
