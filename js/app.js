@@ -1560,7 +1560,12 @@ async function sendWelcomeMail(personId){
   const p=personById(personId); if(!p||!p.email) return;
   if(!confirm(`Für ${fullName(p)} ein neues Passwort setzen und eine Willkommensmail vorbereiten?\n\nEin eventuell vorhandenes altes Passwort wird dabei ungültig.`)) return;
   const { data, error } = await SB.functions.invoke('set-welcome-password', { body:{ email:p.email } });
-  if(error || data?.error){ toast('Fehler: '+(data?.error||error.message),'err'); return; }
+  if(error){
+    let msg=error.message;
+    try{ const body=await error.context.json(); if(body?.error) msg=body.error; }catch(_){}
+    toast('Fehler: '+msg,'err'); return;
+  }
+  if(data?.error){ toast('Fehler: '+data.error,'err'); return; }
   const vorname=data.vorname||p.vorname||p.nachname;
   const subject='Willkommen bei der Dirigentenschule – deine Zugangsdaten';
   const body=`Hallo ${vorname},\n\nherzlich willkommen bei der Dirigentenschule! Du kannst dich ab sofort mit folgenden Zugangsdaten in der App anmelden:\n\nApp-Link: ${location.origin}${location.pathname}\nBenutzername (E-Mail): ${data.email}\nPasswort: ${data.password}\n\nBitte melde dich damit an und vergib dir danach über „Passwort ändern" im Menü ein eigenes, nur dir bekanntes Passwort.\n\nBei Fragen melde dich gerne jederzeit.\n\nViele Grüße`;
