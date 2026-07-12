@@ -74,19 +74,25 @@
     <div class="hero">
       <h1>Willkommen bei der AGUM Dirigentenschule.</h1>
     </div>
-    <div class="toolbar">
-      <h2 class="section-h">Nächste Termine</h2>
-    </div>
-    <div id="upcomingEvents" class="upcoming-events"></div>
+    <div class="start-grid">
+      <div class="start-main">
+        <div class="toolbar">
+          <h2 class="section-h">Aktuelle Infos</h2>
+          <div class="filters">
+            <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
+            <button class="btn-primary" id="absNewBtn" hidden>+ Abmeldung hinzufügen</button>
+          </div>
+        </div>
+        <div id="announcementsList" class="ann-list"></div>
+      </div>
+      <div class="start-side">
+        <div class="toolbar"><h2 class="section-h">Nächste Termine</h2></div>
+        <div id="upcomingEvents" class="upcoming-events"></div>
 
-    <div class="toolbar">
-      <h2 class="section-h">Aktuelle Infos</h2>
-      <div class="filters">
-        <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
-        <button class="btn-primary" id="absNewBtn" hidden>+ Abmeldung hinzufügen</button>
+        <div class="toolbar"><h2 class="section-h">Aktuell online</h2></div>
+        <div id="onlineUsers" class="online-users"></div>
       </div>
     </div>
-    <div id="announcementsList" class="ann-list"></div>
   </section>
 
   <!-- ========== KALENDER ========== -->

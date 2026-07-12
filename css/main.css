@@ -354,3 +354,19 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   .cal-evt{font-size:9.5px;padding:1px 4px}
   .cal-holiday,.cal-ferien{font-size:8px}
 }
+
+/* ---- Startseite: zweispaltig ---- */
+.start-grid{display:grid;grid-template-columns:2fr 1fr;gap:28px;align-items:start}
+.start-side .toolbar{margin-top:0}
+.start-side .upcoming-events{margin-bottom:20px}
+@media(max-width:900px){
+  .start-grid{grid-template-columns:1fr}
+}
+
+/* ---- Aktuell online ---- */
+.online-users{display:flex;flex-direction:column;gap:6px;margin-bottom:24px}
+.online-users .ou-empty{color:var(--text2);font-size:13px}
+.online-pill{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r);padding:6px 12px;font-size:13.5px}
+.online-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto;
+  box-shadow:0 0 0 3px rgba(76,175,130,.18)}

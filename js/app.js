@@ -201,8 +201,10 @@ async function afterSession(){
     $('#logoutBtn').hidden=false;
     $('#pwChangeBtn').hidden=false;
     $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
+    startHeartbeat();
   }else{
     $('#logoutBtn').hidden=true; $('#pwChangeBtn').hidden=true; $('#userBadge').textContent='';
+    stopHeartbeat();
   }
   applyRoleFlags();
   realIsAdmin = isAdmin;
@@ -225,6 +227,38 @@ function setViewAs(id){
   if(viewAsId && !isAdmin && $('.page.active')?.id==='page-admin') showPage('start');
   $('#userBadge').textContent = viewAsId ? `Ansicht als: ${fullName(currentPerson)}` : (realPerson?fullName(realPerson):'');
   renderActivePage();
+}
+
+// ---------- Aktuell online ----------
+// Alle 60s "last_seen_at" der eigenen Person aktualisieren, solange eingeloggt.
+// Als "online" gilt: Heartbeat in den letzten 5 Minuten.
+const ONLINE_WINDOW_MS = 5*60*1000;
+let _heartbeatTimer=null, _onlineListTimer=null;
+function startHeartbeat(){
+  stopHeartbeat();
+  pingPresence();
+  _heartbeatTimer=setInterval(pingPresence, 60000);
+  _onlineListTimer=setInterval(renderOnlineUsers, 30000);
+  document.addEventListener('visibilitychange', onVisibilityPing);
+}
+function stopHeartbeat(){
+  if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
+  if(_onlineListTimer){ clearInterval(_onlineListTimer); _onlineListTimer=null; }
+  document.removeEventListener('visibilitychange', onVisibilityPing);
+}
+function onVisibilityPing(){ if(document.visibilityState==='visible') pingPresence(); }
+async function pingPresence(){
+  if(!realPerson) return;
+  await SB.from('people').update({last_seen_at:new Date().toISOString()}).eq('id',realPerson.id);
+}
+async function renderOnlineUsers(){
+  const el=$('#onlineUsers'); if(!el) return;
+  const cutoff=new Date(Date.now()-ONLINE_WINDOW_MS).toISOString();
+  const { data } = await SB.from('people').select('id,vorname,nachname').gte('last_seen_at',cutoff).order('vorname');
+  const list=(data||[]).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
+  el.innerHTML = list.length
+    ? list.map(p=>`<div class="online-pill"><span class="dot"></span>${esc(fullName(p))}</div>`).join('')
+    : '<p class="ou-empty">Gerade niemand online.</p>';
 }
 async function gateLogin(){
   const email=$('#gateEmail').value.trim(), password=$('#gatePass').value;
@@ -299,6 +333,7 @@ function renderStart(){
   ];
   const sc=$('#startCards'); if(sc) sc.innerHTML=cards.map(c=>`<div class="stat-card"><div class="num">${c.n}</div><div class="lbl">${c.l}</div></div>`).join('');
   renderUpcomingEvents();
+  renderOnlineUsers();
 
   const canInfo=canEdit('infos');
   const today=new Date().toISOString().slice(0,10);
