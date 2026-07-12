@@ -1934,9 +1934,20 @@ async function rteFilePicked(file){
   saveSel();
 }
 
+// ---------- Excel-Export ----------
+// Exportiert die aktuell angezeigte Tabelle (so wie gerendert, inkl. aktiver Filter) als .xlsx.
+function exportTableToExcel(wrapId, filenameBase){
+  const table=$('#'+wrapId+' table');
+  if(!table){ toast('Keine Tabelle zum Exportieren vorhanden','err'); return; }
+  const wb=XLSX.utils.table_to_book(table, {sheet:'Export'});
+  const stamp=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `${filenameBase}_${stamp}.xlsx`);
+}
+
 // ---------- Events ----------
 function bind(){
   $$('.nav-btn').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
+  $$('.xls-export-btn').forEach(b=>b.onclick=()=>exportTableToExcel(b.dataset.table, b.dataset.name));
   $$('.subnav').forEach(nav=>$$('.sub-btn',nav).forEach(b=>b.onclick=()=>{
     $$('.sub-btn',nav).forEach(x=>x.classList.toggle('active',x===b));
     const sp=nav.parentElement;
