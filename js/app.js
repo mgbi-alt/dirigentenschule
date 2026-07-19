@@ -191,8 +191,11 @@ async function afterSession(){
   applyAuthGate();
   if(session?.user){
     const email=session.user.email;
+    // Supabase normalisiert Login-E-Mails auf Kleinschreibung; people.email kann aber
+    // Grossbuchstaben enthalten (Admin-Eingabe) -- daher case-insensitiv per ilike matchen,
+    // konsistent mit my_person_id() in der Datenbank (siehe supabase_migration_v13_security.sql).
     const { data } = await SB.from('people').select('*')
-      .or(`auth_id.eq.${session.user.id},email.eq.${email}`).limit(1);
+      .or(`auth_id.eq.${session.user.id},email.ilike.${email}`).limit(1);
     currentPerson = data?.[0]||null;
     realPerson = currentPerson;
     if(currentPerson && !currentPerson.auth_id){
