@@ -30,7 +30,8 @@ function canEdit(area){
 }
 // Welche Schüler-Zeilen sind sichtbar? (reine Schüler nur sich selbst)
 function visibleStudents(){
-  if(seesAll || !currentPerson) return students();
+  if(!currentPerson) return [];   // Identitaet nicht aufgeloest -> im Zweifel nichts anzeigen (fail closed)
+  if(seesAll) return students();
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
