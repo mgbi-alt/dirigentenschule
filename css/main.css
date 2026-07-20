@@ -19,6 +19,14 @@ body{
   -webkit-font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "clig" 0, "dlig" 0, "hlig" 0, "calt" 0;
 }
+/* Sichtbarer Rahmen fuer Checkboxen -- ohne das faellt der native (nicht angehakte)
+   Rahmen auf iOS Safari gegen den cremefarbenen Hintergrund fast unsichtbar aus. */
+input[type="checkbox"]{
+  accent-color:var(--accent);
+  border:1.5px solid var(--text2);
+  border-radius:3px;
+  background:var(--bg2);
+}
 h1,h2,h3,.section-h,.hero h1,.hd-title,.gate-card h1,.stat-card .num,
 .tt-fach,.tt-fachname,.tt-dayhead,.doc-card h3,.modal-box h3,.dlg-card h3{font-family:var(--fd)}
 h1,h2,h3{font-weight:600}
