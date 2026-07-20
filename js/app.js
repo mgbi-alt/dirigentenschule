@@ -855,6 +855,48 @@ function renderKalender(){
       <div class="cal-daynum">${dn}</div>${holHtml}${ferHtml}${evtHtml}</div>`;
   }
   $('#calGrid').innerHTML=html;
+  renderCalSubscribeBox();
+}
+// ---------- Kalenderabo (ICS-Feed fuer Google/Apple Kalender) ----------
+let _icsToken=undefined;
+async function ensureIcsToken(){
+  if(_icsToken!==undefined) return _icsToken;
+  const {data}=await SB.from('ics_feed_token').select('token').eq('id',true).maybeSingle();
+  _icsToken=data?.token||null;
+  return _icsToken;
+}
+async function renderCalSubscribeBox(){
+  const box=$('#calSubscribeBox'); if(!box) return;
+  const token=await ensureIcsToken();
+  if(!token){ box.innerHTML=''; return; }
+  const httpUrl=`${SB_URL}/functions/v1/ics-feed?token=${encodeURIComponent(token)}`;
+  const webcalUrl=httpUrl.replace(/^https?:\/\//,'webcal://');
+  box.innerHTML=`
+    <details class="cal-subscribe">
+      <summary>📅 Kalender abonnieren (Google/Apple)</summary>
+      <p>Diese Adresse in Google Kalender ("Weitere Kalender" → "Per URL") oder im iOS-Kalender
+      ("Kalender hinzufügen" → "Kalenderabo hinzufügen") eintragen. Neue oder geänderte Termine
+      erscheinen danach automatisch – wie schnell, entscheidet die Kalender-App (meist alle paar Stunden).</p>
+      <div class="cal-subscribe-row">
+        <input type="text" readonly value="${esc(webcalUrl)}" onclick="this.select()">
+        <button type="button" class="btn-ghost" onclick="copyIcsUrl('${esc(webcalUrl)}')">Kopieren</button>
+        ${isAdmin?`<button type="button" class="btn-ghost" onclick="regenIcsToken()">Neu generieren</button>`:''}
+      </div>
+    </details>`;
+}
+function copyIcsUrl(url){
+  if(!navigator.clipboard){ toast('Bitte manuell kopieren','err'); return; }
+  navigator.clipboard.writeText(url).then(()=>toast('Link kopiert')).catch(()=>toast('Kopieren fehlgeschlagen','err'));
+}
+async function regenIcsToken(){
+  if(!confirm('Neuen Abo-Link erzeugen? Bestehende Kalender-Abos in Google/Apple Kalender funktionieren danach nicht mehr und müssen dort neu eingerichtet werden.')) return;
+  const bytes=crypto.getRandomValues(new Uint8Array(24));
+  const token=[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const {error}=await SB.from('ics_feed_token').upsert({id:true,token});
+  if(error){ toast(error.message,'err'); return; }
+  _icsToken=undefined;
+  renderCalSubscribeBox();
+  toast('Neuer Abo-Link erzeugt');
 }
 function catBtnGroupHtml(sel){
   return CAL_KATEGORIEN.map(c=>`<button type="button" class="tm-cat-btn ${c.key===sel?'active':''}" data-key="${c.key}"

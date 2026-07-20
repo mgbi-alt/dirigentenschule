@@ -347,10 +347,18 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .ue-cat{display:inline-block;padding:1px 8px;border-radius:4px;font-size:11px;color:#fff;margin-left:6px}
 
 /* ---- Kalender ---- */
+.cal-subscribe{background:var(--card);border:1px solid var(--border);border-radius:var(--r2);
+  padding:10px 16px;margin-bottom:14px}
+.cal-subscribe>summary{cursor:pointer;font-size:13.5px;color:var(--text2);list-style:revert}
+.cal-subscribe[open]>summary{color:var(--accent2);margin-bottom:8px}
+.cal-subscribe p{color:var(--text2);font-size:12.5px;margin:6px 0 10px;line-height:1.5}
+.cal-subscribe-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cal-subscribe-row input{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r);padding:7px 10px;font-size:12.5px;color:var(--text)}
 .cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12.5px;color:var(--text2)}
 .cal-legend span{display:inline-flex;align-items:center;gap:5px}
 .cal-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--border);
   border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
 .cal-dow{background:var(--bg2);padding:6px;text-align:center;font-size:12px;font-weight:600;color:var(--text2)}
 .cal-day{background:var(--card);min-height:96px;padding:5px;display:flex;flex-direction:column;gap:3px;cursor:pointer}

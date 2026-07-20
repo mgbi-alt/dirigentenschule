@@ -423,3 +423,10 @@ entrypoint = "./functions/set-welcome-password/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/set-welcome-password/*.html" ]
+
+[functions.ics-feed]
+enabled = true
+# Kein Login moeglich (Google/Apple-Kalender-Apps rufen die URL ohne Supabase-JWT
+# auf) -- Schutz stattdessen ueber den Token in der Query-String, siehe index.ts.
+verify_jwt = false
+entrypoint = "./functions/ics-feed/index.ts"
