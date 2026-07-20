@@ -856,18 +856,36 @@ function renderKalender(){
   }
   $('#calGrid').innerHTML=html;
 }
-function catOptsHtml(sel){
-  return CAL_KATEGORIEN.map(c=>`<option value="${c.key}" ${c.key===sel?'selected':''}>${esc(c.label)}</option>`).join('');
+function catBtnGroupHtml(sel){
+  return CAL_KATEGORIEN.map(c=>`<button type="button" class="tm-cat-btn ${c.key===sel?'active':''}" data-key="${c.key}"
+    style="--cat-color:${c.color}" onclick="selectTermKat(this)">${esc(c.label)}</button>`).join('');
+}
+function selectTermKat(btn){
+  $$('.tm-cat-btn', btn.parentElement).forEach(b=>b.classList.toggle('active', b===btn));
+  $('#tm_kat').value = btn.dataset.key;
 }
 function openTerminDialog(id, prefillDate){
   const edit=canEdit('kalender'); if(!edit) return;
   const t=id?cache.termine.find(x=>x.id===id):null;
-  const body=`<label>Titel<input id="tm_titel" value="${esc(t?.titel||'')}" placeholder="z.B. Aufführung Oetkerhalle"></label>
-    <label>Kategorie<select id="tm_kat">${catOptsHtml(t?.kategorie||'sonstiges')}</select></label>
-    <label>Datum<input type="date" id="tm_datum" value="${esc(t?.datum||prefillDate||'')}"></label>
-    <label>Uhrzeit (optional)<input type="time" id="tm_uhrzeit" value="${esc(t?.uhrzeit||'')}"></label>
-    <label>Enddatum (optional, für mehrtägige Termine)<input type="date" id="tm_bisdatum" value="${esc(t?.bis_datum||'')}"></label>
-    <label>Bis-Uhrzeit (optional)<input type="time" id="tm_bisuhrzeit" value="${esc(t?.bis_uhrzeit||'')}"></label>
+  const kat=t?.kategorie||'sonstiges';
+  const body=`<input id="tm_titel" class="tm-title-input" value="${esc(t?.titel||'')}" placeholder="Titel">
+    <div class="tm-cat-group">${catBtnGroupHtml(kat)}</div>
+    <input type="hidden" id="tm_kat" value="${esc(kat)}">
+    <div class="tm-time-row">
+      <span class="tm-time-icon">🕐</span>
+      <div class="tm-time-fields">
+        <div class="tm-time-line">
+          <span class="tm-time-label">Beginnt</span>
+          <input type="date" id="tm_datum" value="${esc(t?.datum||prefillDate||'')}">
+          <input type="time" id="tm_uhrzeit" value="${esc(t?.uhrzeit||'')}">
+        </div>
+        <div class="tm-time-line">
+          <span class="tm-time-label">Endet</span>
+          <input type="date" id="tm_bisdatum" value="${esc(t?.bis_datum||'')}">
+          <input type="time" id="tm_bisuhrzeit" value="${esc(t?.bis_uhrzeit||'')}">
+        </div>
+      </div>
+    </div>
     <label>Ort<input id="tm_ort" value="${esc(t?.ort||'')}" placeholder="z.B. Oetkerhalle Bielefeld"></label>
     <label>Beschreibung<input id="tm_besch" value="${esc(t?.beschreibung||'')}"></label>
     ${t?`<button type="button" class="btn-ghost" onclick="delTermin('${t.id}')">Termin löschen</button>`:''}`;
