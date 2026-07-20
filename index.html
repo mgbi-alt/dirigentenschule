@@ -284,6 +284,36 @@
   </div>
 </div>
 
+<!-- ========== TERMIN (Kalender) ========== -->
+<div class="modal" id="terminModal" hidden>
+  <div class="modal-box wide tm-box">
+    <div class="tm-header">
+      <button type="button" class="tm-close" id="tmCloseBtn" aria-label="Schließen">✕</button>
+      <button type="button" class="btn-primary" id="tmSaveBtn">Speichern</button>
+    </div>
+    <input id="tm_titel" class="tm-title-input" placeholder="Titel hinzufügen">
+    <div class="tm-cat-group" id="tmCatGroup"></div>
+    <input type="hidden" id="tm_kat" value="sonstiges">
+    <div class="tm-time-row">
+      <span class="tm-time-icon">🕐</span>
+      <div class="tm-time-fields">
+        <div class="tm-time-line">
+          <input type="date" id="tm_datum">
+          <input type="time" id="tm_uhrzeit">
+        </div>
+        <div class="tm-time-line">
+          <input type="date" id="tm_bisdatum">
+          <input type="time" id="tm_bisuhrzeit">
+        </div>
+      </div>
+    </div>
+    <label>Ort<input id="tm_ort" placeholder="z.B. Oetkerhalle Bielefeld"></label>
+    <label>Beschreibung<input id="tm_besch"></label>
+    <button type="button" class="btn-ghost" id="tmDeleteBtn" hidden>Termin löschen</button>
+    <p class="modal-err" id="tmErr"></p>
+  </div>
+</div>
+
 <!-- ========== INFO / RICH-TEXT-EDITOR ========== -->
 <div class="modal" id="annModal" hidden>
   <div class="modal-box wide">

@@ -864,54 +864,48 @@ function selectTermKat(btn){
   $$('.tm-cat-btn', btn.parentElement).forEach(b=>b.classList.toggle('active', b===btn));
   $('#tm_kat').value = btn.dataset.key;
 }
+let _tmEditId=null;
 function openTerminDialog(id, prefillDate){
   const edit=canEdit('kalender'); if(!edit) return;
   const t=id?cache.termine.find(x=>x.id===id):null;
+  _tmEditId=t?t.id:null;
   const kat=t?.kategorie||'sonstiges';
-  const body=`<input id="tm_titel" class="tm-title-input" value="${esc(t?.titel||'')}" placeholder="Titel">
-    <div class="tm-cat-group">${catBtnGroupHtml(kat)}</div>
-    <input type="hidden" id="tm_kat" value="${esc(kat)}">
-    <div class="tm-time-row">
-      <span class="tm-time-icon">🕐</span>
-      <div class="tm-time-fields">
-        <div class="tm-time-line">
-          <span class="tm-time-label">Beginnt</span>
-          <input type="date" id="tm_datum" value="${esc(t?.datum||prefillDate||'')}">
-          <input type="time" id="tm_uhrzeit" value="${esc(t?.uhrzeit||'')}">
-        </div>
-        <div class="tm-time-line">
-          <span class="tm-time-label">Endet</span>
-          <input type="date" id="tm_bisdatum" value="${esc(t?.bis_datum||'')}">
-          <input type="time" id="tm_bisuhrzeit" value="${esc(t?.bis_uhrzeit||'')}">
-        </div>
-      </div>
-    </div>
-    <label>Ort<input id="tm_ort" value="${esc(t?.ort||'')}" placeholder="z.B. Oetkerhalle Bielefeld"></label>
-    <label>Beschreibung<input id="tm_besch" value="${esc(t?.beschreibung||'')}"></label>
-    ${t?`<button type="button" class="btn-ghost" onclick="delTermin('${t.id}')">Termin löschen</button>`:''}`;
-  openDialog(t?'Termin bearbeiten':'Termin hinzufügen', body, async()=>{
-    const datum=$('#tm_datum').value;
-    const titel=$('#tm_titel').value.trim();
-    if(!titel||!datum){ toast('Titel und Datum sind Pflicht','err'); return false; }
-    const rec={
-      titel, datum, kategorie:$('#tm_kat').value,
-      uhrzeit:$('#tm_uhrzeit').value||null,
-      bis_datum:$('#tm_bisdatum').value||null,
-      bis_uhrzeit:$('#tm_bisuhrzeit').value||null,
-      ort:$('#tm_ort').value.trim()||null,
-      beschreibung:$('#tm_besch').value.trim()||null,
-    };
-    if(t){
-      const {error}=await SB.from('termine').update(rec).eq('id',t.id);
-      if(error){ toast(error.message,'err'); return false; }
-      Object.assign(t,rec);
-    }else{
-      const {data,error}=await SB.from('termine').insert(rec).select().single();
-      if(error){ toast(error.message,'err'); return false; }
-      cache.termine.push(data);
-    }
-    renderKalender(); renderUpcomingEvents(); toast('Gespeichert');
-  });
+  $('#tm_titel').value=t?.titel||'';
+  $('#tmCatGroup').innerHTML=catBtnGroupHtml(kat);
+  $('#tm_kat').value=kat;
+  $('#tm_datum').value=t?.datum||prefillDate||'';
+  $('#tm_uhrzeit').value=t?.uhrzeit||'';
+  $('#tm_bisdatum').value=t?.bis_datum||'';
+  $('#tm_bisuhrzeit').value=t?.bis_uhrzeit||'';
+  $('#tm_ort').value=t?.ort||'';
+  $('#tm_besch').value=t?.beschreibung||'';
+  $('#tmErr').textContent='';
+  $('#tmDeleteBtn').hidden=!t;
+  $('#terminModal').hidden=false;
+}
+function closeTerminModal(){ $('#terminModal').hidden=true; _tmEditId=null; }
+async function saveTermin(){
+  const datum=$('#tm_datum').value;
+  const titel=$('#tm_titel').value.trim();
+  if(!titel||!datum){ $('#tmErr').textContent='Titel und Datum sind Pflicht'; return; }
+  const rec={
+    titel, datum, kategorie:$('#tm_kat').value,
+    uhrzeit:$('#tm_uhrzeit').value||null,
+    bis_datum:$('#tm_bisdatum').value||null,
+    bis_uhrzeit:$('#tm_bisuhrzeit').value||null,
+    ort:$('#tm_ort').value.trim()||null,
+    beschreibung:$('#tm_besch').value.trim()||null,
+  };
+  if(_tmEditId){
+    const {error}=await SB.from('termine').update(rec).eq('id',_tmEditId);
+    if(error){ $('#tmErr').textContent=error.message; return; }
+    Object.assign(cache.termine.find(x=>x.id===_tmEditId), rec);
+  }else{
+    const {data,error}=await SB.from('termine').insert(rec).select().single();
+    if(error){ $('#tmErr').textContent=error.message; return; }
+    cache.termine.push(data);
+  }
+  closeTerminModal(); renderKalender(); renderUpcomingEvents(); toast('Gespeichert');
 }
 // Klick auf ein Treffen im Kalender -> Stundenplan fuer dieses Treffen oeffnen
 function goToTreffen(planId){
@@ -924,7 +918,7 @@ async function delTermin(id){
   const {error}=await SB.from('termine').delete().eq('id',id);
   if(error){ toast(error.message,'err'); return; }
   cache.termine=cache.termine.filter(t=>t.id!==id);
-  closeDialog(); renderKalender(); renderUpcomingEvents(); toast('Gelöscht');
+  closeTerminModal(); renderKalender(); renderUpcomingEvents(); toast('Gelöscht');
 }
 // Startseite: die naechsten anstehenden Termine + Treffen (auch laufende Mehrtages-Termine)
 function renderUpcomingEvents(){
@@ -2062,6 +2056,9 @@ function bind(){
   $('#calNextBtn').onclick=()=>calShift(1);
   $('#calTodayBtn').onclick=calToday;
   $('#calAddBtn').onclick=()=>openTerminDialog(null,dateISO(new Date()));
+  $('#tmCloseBtn').onclick=closeTerminModal;
+  $('#tmSaveBtn').onclick=saveTermin;
+  $('#tmDeleteBtn').onclick=()=>{ if(_tmEditId) delTermin(_tmEditId); };
   $('#ttResetBtn').onclick=()=>resetPlanToBase(currentPlanId());
   $('#ttTimesBtn').onclick=manageTimeSlots;
   $('#ttPlan').onchange=renderStundenplan;
