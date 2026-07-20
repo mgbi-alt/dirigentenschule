@@ -1,5 +1,5 @@
 // Service Worker – Dirigentenschule (einfacher App-Shell-Cache)
-const CACHE = 'dirschule-v1';
+const CACHE = 'dirschule-v2';
 const ASSETS = ['./','./index.html','./css/main.css','./js/config.js','./js/app.js','./manifest.json'];
 
 self.addEventListener('install', e=>{
