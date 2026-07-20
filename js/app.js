@@ -340,12 +340,14 @@ function renderStart(){
   renderOnlineUsers();
 
   const canInfo=canEdit('infos');
+  const canAbs=canEdit('abmeldungen');
   const today=new Date().toISOString().slice(0,10);
   const roleLabelMap=Object.fromEntries(ROLES.map(r=>[r.key,r.label]));
   const absLi=a=>{ const p=personById(a.person_id);
     const rolle=p?(roleLabelMap[primaryRole(p)]||'Schüler'):'Schüler';
     const tage=a.tage&&a.tage!=='fr_sa'?`, ${absTageLabel(a.tage)}`:'';
-    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle}${tage})</span>${a.grund?` – ${esc(a.grund)}`:''}</li>`; };
+    const editBtn=canAbs?` <button type="button" class="btn-ghost mini" onclick="editAbsenceInline('${a.id}')">Bearbeiten</button>`:'';
+    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle}${tage})</span>${a.grund?` – ${esc(a.grund)}`:''}${editBtn}</li>`; };
   const infoHtml=a=>`<div class="ann-block"><h4>${esc(a.titel)} ${a.datum?`<span class="date">${fmtDate(a.datum)}</span>`:''}</h4>
       <div class="ann-body">${sanitizeHtml(a.text)}</div>
       ${canInfo?`<div class="ann-actions"><button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
@@ -1357,6 +1359,30 @@ async function delAbsence(id, planId){
   cache.absences=cache.absences.filter(a=>a.id!==id);
   document.querySelector(`#absList .gc-row[data-id="${id}"]`)?.remove();
   renderAdmin(); renderStundenplan();
+}
+// Abmeldung direkt aus der Info-/Startseiten-Ansicht bearbeiten oder löschen
+function editAbsenceInline(id){
+  if(!canEdit('abmeldungen')) return;
+  const a=cache.absences.find(x=>x.id===id); if(!a) return;
+  const p=personById(a.person_id);
+  const body=`<p class="muted">${esc(p?fullName(p):'?')}</p>
+    <label>Tag${tageSelectHtml('eab_tage', a.tage||'fr_sa')}</label>
+    <label>Grund<input id="eab_grund" value="${esc(a.grund||'')}" placeholder="z.B. krank"></label>
+    <button type="button" class="btn-ghost" onclick="delAbsenceInline('${id}')">Abmeldung löschen</button>`;
+  openDialog(`Abmeldung – ${p?esc(fullName(p)):''}`, body, async()=>{
+    const upd={tage:$('#eab_tage').value, grund:$('#eab_grund').value.trim()||null};
+    const {error}=await SB.from('absences').update(upd).eq('id',id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(a,upd);
+    renderStart(); renderStundenplan(); toast('Gespeichert');
+  });
+}
+async function delAbsenceInline(id){
+  if(!confirm('Diese Abmeldung löschen?')) return;
+  const {error}=await SB.from('absences').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.absences=cache.absences.filter(a=>a.id!==id);
+  closeDialog(); renderStart(); renderStundenplan(); toast('Gelöscht');
 }
 const allActive=()=>cache.people.filter(p=>p.aktiv);
 function peopleSelectOpts(pool, selectedIds){
