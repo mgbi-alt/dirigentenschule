@@ -13,6 +13,11 @@
 body{
   margin:0; background:var(--bg); color:var(--text);
   font-family:var(--fb); font-size:15px;
+  /* Verhindert, dass Safari/iOS Buchstabenkombinationen wie "tt"/"ti"/"tf" als
+     dekorative Ligatur-Glyphen darstellt (sieht dort z.B. wie "Σ"/"θ" aus). */
+  font-variant-ligatures: none;
+  -webkit-font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0, "dlig" 0, "hlig" 0, "calt" 0;
 }
 h1,h2,h3,.section-h,.hero h1,.hd-title,.gate-card h1,.stat-card .num,
 .tt-fach,.tt-fachname,.tt-dayhead,.doc-card h3,.modal-box h3,.dlg-card h3{font-family:var(--fd)}
