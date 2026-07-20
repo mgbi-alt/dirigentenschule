@@ -10,6 +10,13 @@
   --fd:'Playfair Display',Georgia,serif; --fb:'DM Sans',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
+html{
+  /* Chrome/Android vergroessert (Font-Boosting) bei Seiten mit vielen schmalen
+     Spalten -- wie dem Kalender-Grid mit 7 Wochentagsspalten -- beim Laden
+     automatisch Schrift/Layout, bis man manuell rauszoomt. Das schaltet es ab. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body{
   margin:0; background:var(--bg); color:var(--text);
   font-family:var(--fb); font-size:15px;
