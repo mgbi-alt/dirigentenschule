@@ -318,6 +318,14 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .toast.err{border-color:var(--err)}.toast.ok{border-color:var(--green)}
 
 @media(max-width:640px){
+  /* Eingabefelder unter 16px lassen iOS/Android beim Antippen automatisch
+     reinzoomen (Standard-Verhalten von Safari/Samsung Internet/Chrome) -- der
+     Zoom bleibt dann oft haengen und laesst spaeter Kopfzeile/Popups
+     abgeschnitten wirken. Deshalb auf dem Handy ueberall mind. 16px erzwingen. */
+  input,select,textarea,
+  input[type=text],input[type=email],input[type=password],input[type=date],input[type=time],
+  .search-input,.ta,.cell-input,.viewas-sel{font-size:16px!important}
+  .tm-box .tm-title-input{font-size:20px!important} /* schon >=16px, Original-Groesse behalten */
   #mainNav{order:3;flex-basis:100%;overflow-x:auto}
   .hero h1{font-size:24px}
   #appMain{padding:16px 10px 50px}
