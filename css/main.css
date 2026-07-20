@@ -409,3 +409,11 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .tm-time-line{display:flex;align-items:center;gap:8px}
 .tm-box .tm-time-line input[type="date"]{width:auto;flex:1.4 1 0;min-width:0;margin-bottom:0}
 .tm-box .tm-time-line input[type="time"]{width:auto;flex:1 1 0;min-width:0;margin-bottom:0}
+@media(max-width:480px){
+  /* Native Datum/Uhrzeit-Eingaben haben auf dem Handy (v.a. iOS Safari) eine
+     eigene Mindestbreite, die durch flex/min-width:0 nicht mehr schrumpfbar ist --
+     nebeneinander sprengen sie dann das Popup. Deshalb hier untereinander. */
+  .tm-time-line{flex-wrap:wrap}
+  .tm-box .tm-time-line input[type="date"],
+  .tm-box .tm-time-line input[type="time"]{flex:1 1 100%}
+}
