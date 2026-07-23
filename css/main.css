@@ -334,8 +334,10 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   .search-input,.ta,.cell-input,.viewas-sel{font-size:16px!important}
   .tm-box .tm-title-input{font-size:20px!important} /* schon >=16px, Original-Groesse behalten */
   #mainNav{order:3;flex-basis:100%;overflow-x:auto}
-  .hero h1{font-size:24px}
+  .hero h1{font-size:20px}
   #appMain{padding:16px 10px 50px}
+  /* Aktionen auf der Startseite auf dem Handy etwas kompakter. */
+  #annNewBtn,#absNewBtn{font-size:13px;padding:7px 12px}
   /* Kopfzeile: rechter Block darf umbrechen + schrumpfen, damit "Passwort
      aendern"/"Abmelden" bei 360px Breite nicht ueber den rechten Rand rutschen. */
   #appHeader{gap:10px;padding:10px 12px}
