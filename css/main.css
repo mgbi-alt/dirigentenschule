@@ -117,6 +117,18 @@ em{color:var(--text2);font-style:normal}
 .past-termine[open]>summary{color:var(--accent2)}
 .ann-treffen{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin:6px 0}
 .ann-treffen select{flex:1}
+/* Zusammengeklappte Info-Gruppen (Startseite): Zukuenftige / Veraltete Infos */
+.info-group{border:1px solid var(--border);border-radius:var(--r2);background:var(--card);margin-top:12px;overflow:hidden}
+.info-group>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;
+  padding:12px 16px;font-weight:600;color:var(--text2);user-select:none}
+.info-group>summary::-webkit-details-marker{display:none}
+.info-group>summary .chev{color:var(--text3);font-size:15px;line-height:1;transition:transform .2s}
+.info-group[open]>summary .chev{transform:rotate(90deg)}
+.info-group[open]>summary{color:var(--accent2);border-bottom:1px solid var(--border)}
+.info-group>summary .count{margin-left:auto;font-size:12px;font-weight:600;color:var(--accent2);
+  background:rgba(122,59,46,.10);border:1px solid var(--border);border-radius:20px;padding:1px 9px;min-width:26px;text-align:center}
+.info-group-body{padding:2px 16px 10px}
+.info-group-body .past-termine:first-child{margin-top:6px}
 
 /* ---- Tables ---- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r2);background:var(--card)}

@@ -365,14 +365,32 @@ function renderStart(){
 
   const unitHtml=u=>`<div class="ann-item">${u.body}
     ${u.abs.length?`<div class="ann-abs"><b>Abmeldungen:</b><ul class="abs-ul">${u.abs.map(absLi).join('')}</ul></div>`:''}</div>`;
-  const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
-  // aktuelles Treffen = nächstes anstehendes; nur dieses wird oben gezeigt
-  const upcoming=units.filter(u=>u.kind==='treffen' && u.date && u.date>=today).sort((a,b)=>a.date.localeCompare(b.date));
+  const byDateDesc=(a,b)=>(b.date||'').localeCompare(a.date||'');
+  const byDateAsc=(a,b)=>(a.date||'').localeCompare(b.date||'');
+  // Aktuelles Treffen = naechstes anstehendes (frühestes mit Datum >= heute).
+  const upcoming=units.filter(u=>u.kind==='treffen' && u.date && u.date>=today).sort(byDateAsc);
   const activeId=upcoming.length?upcoming[0].plan.id:null;
-  const top=units.filter(u=>u.kind==='info' || (u.plan&&u.plan.id===activeId)).sort(byDate);
-  const below=units.filter(u=>u.kind==='treffen' && (!activeId || u.plan.id!==activeId)).sort(byDate);
-  let html=top.length?top.map(unitHtml).join(''):'<p class="muted">Noch keine Infos.</p>';
-  html+=below.map(u=>`<details class="past-termine"><summary>${esc(u.title)}${u.date?` · ${fmtDate(u.date)}`:''}</summary>${unitHtml(u)}</details>`).join('');
+  // Einteilung in drei Kategorien:
+  //  - aktuell:    freie Infos + das aktuelle Treffen  -> aufgeklappt oben
+  //  - zukuenftig: Datum in der Zukunft                -> Gruppe, zugeklappt
+  //  - veraltet:   Datum in der Vergangenheit          -> Gruppe, zugeklappt
+  const aktuell=[], zukuenftig=[], veraltet=[];
+  units.forEach(u=>{
+    if(u.plan && activeId && u.plan.id===activeId){ aktuell.push(u); return; }
+    if(u.date && u.date < today){ veraltet.push(u); return; }
+    if(u.date && u.date > today){ zukuenftig.push(u); return; }
+    aktuell.push(u); // freie Infos ohne Datum bzw. mit heutigem Datum
+  });
+  aktuell.sort(byDateDesc); zukuenftig.sort(byDateAsc); veraltet.sort(byDateDesc);
+  // Eine zugeklappte Gruppe mit den einzeln aufklappbaren Treffen darin.
+  const groupHtml=(title,items)=>{
+    if(!items.length) return '';
+    const inner=items.map(u=>`<details class="past-termine"><summary>${esc(u.title)}${u.date?` · ${fmtDate(u.date)}`:''}</summary>${unitHtml(u)}</details>`).join('');
+    return `<details class="info-group"><summary><span class="chev">›</span><span class="ig-title">${esc(title)}</span><span class="count">${items.length}</span></summary><div class="info-group-body">${inner}</div></details>`;
+  };
+  let html=aktuell.length?aktuell.map(unitHtml).join(''):'<p class="muted">Keine aktuellen Infos.</p>';
+  html+=groupHtml('Zukünftige Infos', zukuenftig);
+  html+=groupHtml('Veraltete Infos', veraltet);
   $('#announcementsList').innerHTML = html;
 }
 // Datums-Anzeige eines Treffens: "20.11.-21.11.2026" (Fr+Sa) bzw. einzelnes Datum
