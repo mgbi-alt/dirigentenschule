@@ -521,10 +521,30 @@ function renderTheory(){
     $('#theoryMatrix').innerHTML='<p class="muted" style="padding:14px">Noch keine Treffen angelegt. Treffen werden im Admin-Bereich verwaltet.</p>';
     return;
   }
+  const students=visibleStudents();
+  // Bei genau einem Schüler (eigene Ansicht bzw. "Ansicht als"): Treffen als Zeilen
+  // statt Spalten -- die Name-Spalte waere dann ohnehin nur eine Zeile lang.
+  if(students.length===1){
+    const p=students[0];
+    const mayRow = edit || (currentPerson && currentPerson.id===p.id);
+    const vals=[];
+    const rows = treffen.map(t=>{
+      const m=meetingForPlan(t.id);
+      const v=m?meetingPercent(m.id,p.id):null; vals.push(v);
+      return `<tr class="${mayRow?'cell-edit':''}" ${mayRow?`onclick="openHaCell('${t.id}','${p.id}')"`:''}>
+        <td>${esc(t.name||'Treffen')} <span class="col-date">${esc(treffenDateLabel(t))}</span></td>
+        <td class="${haCellClass(v)}">${v==null?'–':v+'%'}</td></tr>`;
+    }).join('');
+    const known=vals.filter(v=>v!=null);
+    const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
+    $('#theoryMatrix').innerHTML = `<table class="pivot-table"><tr><th>Treffen</th><th>Ergebnis</th></tr>${rows}
+      <tr class="row-total"><td>Ø Gesamt</td><td>${avg==null?'–':avg+'%'}</td></tr></table>`;
+    return;
+  }
   const head = `<tr><th class="name">Schüler</th>${treffen.map(t=>
     `<th class="treffen-col">${esc(t.name||'Treffen')}<br><span class="col-date">${esc(treffenDateLabel(t))}</span></th>`).join('')}
     <th class="sum">Ø Gesamt</th></tr>`;
-  const rows = visibleStudents().map(p=>{
+  const rows = students.map(p=>{
     const mayRow = edit || (currentPerson && currentPerson.id===p.id);
     const vals=[];
     const cells = treffen.map(t=>{
@@ -670,7 +690,10 @@ function renderPractice(){
   // Wenn eine konkrete KW gewählt: alle Schüler anzeigen (auch ohne Eintrag)
   rows.sort((a,b)=> b.jahr-a.jahr || b.kw-a.kw || (fullName(personById(a.person_id))>fullName(personById(b.person_id))?1:-1));
 
-  const head=`<tr><th>Jahr</th><th>KW</th><th>Datum</th><th class="name">Name</th>
+  // Bei genau einem Schüler in der gefilterten Liste (eigene Ansicht, "Ansicht als"
+  // oder Schüler-Filter) ist die Name-Spalte redundant.
+  const singleStudent = rows.length>0 && new Set(rows.map(r=>r.person_id)).size===1;
+  const head=`<tr><th>Jahr</th><th>KW</th><th>Datum</th>${singleStudent?'':'<th class="name">Name</th>'}
     ${SUBJECTS.map(s=>`<th>${s.label}</th>`).join('')}<th class="sum">Gesamt</th><th>Ferien</th></tr>`;
   const body = rows.map(r=>{
     const p=personById(r.person_id);
@@ -682,7 +705,7 @@ function renderPractice(){
     }).join('');
     return `<tr class="${canEditRow?'cell-edit':''}" ${canEditRow?`onclick="editPractice('${r.id}')"`:''}>
       <td>${r.jahr}</td><td>${r.kw}</td><td>${kwRange(r.jahr,r.kw)}</td>
-      <td class="name">${esc(fullName(p))}</td>${cells}
+      ${singleStudent?'':`<td class="name">${esc(fullName(p))}</td>`}${cells}
       <td class="sum ${gesamtClass(sum,r.ferien)}">${sum} Min</td>
       <td>${r.ferien?'✓':'–'}</td></tr>`;
   }).join('');
@@ -1739,8 +1762,31 @@ function renderTests(fach, sel){
   const cols=testColsFor(fach);
   const edit=canEdit('tests');
   if(!cols.length){ $(sel).innerHTML=`<p class="muted" style="padding:14px">${edit?'Noch keine Tests – über „Tests verwalten" anlegen.':'Keine Tests.'}</p>`; return; }
+  const students=visibleStudents();
+  // Bei genau einem Schüler: Test-Termine als Zeilen statt Spalten, Ø ganz unten.
+  if(students.length===1){
+    const p=students[0];
+    const vals=cols.map(c=>{
+      const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
+      return r?Math.round(r.ergebnis):null;
+    });
+    const cellRows=cols.map((c,i)=>{
+      const v=vals[i], txt=v==null?'–':v+'%';
+      const td=edit?`<td class="cell-edit" data-test-cell data-pid="${esc(p.id)}" data-fach="${esc(fach)}" data-label="${esc(c.label)}" data-sort="${esc(c.sort)}">${txt}</td>`:`<td>${txt}</td>`;
+      return `<tr><td>${testColText(c)}</td>${td}</tr>`;
+    }).join('');
+    const known=vals.filter(v=>v!=null);
+    const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
+    $(sel).innerHTML=`<table class="pivot-table"><tr><th>Termin</th><th>Ergebnis</th></tr>${cellRows}
+      <tr class="row-total"><td>Ø</td><td>${avg==null?'–':avg+'%'}</td></tr></table>`;
+    $(sel).onclick=e=>{
+      const td=e.target.closest('[data-test-cell]'); if(!td) return;
+      editTest(td.dataset.pid, td.dataset.fach, td.dataset.label, +td.dataset.sort);
+    };
+    return;
+  }
   const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th class="treffen-col">${testColHeadHtml(c)}</th>`).join('')}<th class="sum">Ø</th></tr>`;
-  const body=visibleStudents().map(p=>{
+  const body=students.map(p=>{
     const vals=cols.map(c=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
       const v=r?Math.round(r.ergebnis):null;
@@ -1869,8 +1915,26 @@ function renderGrades(fach, sel){
   if(!cols.length){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Spalten definiert.</p>'; return; }
   if(!rows.length && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
   const fmt=(col,v)=> v==null?'–':(col.typ==='note'||col.art==='text'?esc(String(v)):Math.round(v)+'%');
+  const students=visibleStudents();
+  // Bei genau einem Schüler: Kriterien als Zeilen statt Spalten; Gesamt/Note
+  // (das Endergebnis) ans Ende, durch einen Trennstrich abgesetzt.
+  if(students.length===1){
+    const p=students[0];
+    const g=(rows.find(x=>x.person_id===p.id))||{};
+    if(!rows.find(x=>x.person_id===p.id) && !edit){ $(sel).innerHTML='<p class="muted" style="padding:14px">Keine Gesamtbewertung.</p>'; return; }
+    const isFinal=c=>c.typ==='gesamt'||c.typ==='note';
+    const rowHtml=(c,extraClass)=>{
+      const cls=[extraClass, edit?'cell-edit':''].filter(Boolean).join(' ');
+      return `<tr class="${cls}" ${edit?`onclick="editGrade('${p.id}','${fach}')"`:''}>
+        <td>${esc(c.label)}</td><td>${fmt(c, colValue(g,c,fach,p.id))}</td></tr>`;
+    };
+    const mainRows=cols.filter(c=>!isFinal(c)).map(c=>rowHtml(c,'')).join('');
+    const finalRows=cols.filter(isFinal).map(c=>rowHtml(c,'row-total')).join('');
+    $(sel).innerHTML=`<table class="pivot-table"><tr><th>Kriterium</th><th>Ergebnis</th></tr>${mainRows}${finalRows}</table>`;
+    return;
+  }
   const head=`<tr><th class="name">Schüler</th>${cols.map(c=>`<th class="treffen-col">${esc(c.label).replace(/ /g,'<br>')}</th>`).join('')}</tr>`;
-  const body=visibleStudents().map(p=>{
+  const body=students.map(p=>{
     const g=rows.find(x=>x.person_id===p.id);
     if(!g && !edit) return '';
     return `<tr class="${edit?'cell-edit':''}" ${edit?`onclick="editGrade('${p.id}','${fach}')"`:''}>
