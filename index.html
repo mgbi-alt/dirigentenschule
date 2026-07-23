@@ -365,37 +365,62 @@
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
 <script>
-// Temporaerer Mess-Modus zur Fehlersuche "Popup/Seite zu breit auf dem Handy".
-// Nur aktiv mit ?debug=1 in der URL. Findet Elemente, die ueber die
-// Bildschirmbreite hinausragen, und zeigt sie oben als Banner an.
+// Temporaerer Mess-Modus zur Fehlersuche "Seite/Popup laedt zu gross auf dem Handy".
+// Nur aktiv mit ?debug=1 in der URL. Zeigt Zoom-Faktor, Font-Boosting-Test und
+// zu breite Elemente (ohne Scroll-Container) oben als Banner.
 (function(){
   if(!/[?&]debug=1\b/.test(location.search)) return;
+  // Steckt ein Element in einem seitlich scrollbaren/versteckten Container?
+  // -> dessen "Ueberbreite" ist gewollt und kein Fehler.
+  function inScrollBox(el){
+    let p=el.parentElement;
+    while(p && p!==document.body){
+      const ox=getComputedStyle(p).overflowX;
+      if(ox==='auto'||ox==='scroll'||ox==='hidden') return true;
+      p=p.parentElement;
+    }
+    return false;
+  }
+  // Font-Boosting-Probe: 12px-Text ausmessen. Wird er deutlich groesser
+  // gerendert als vorgegeben, blaeht Chrome die Schrift auf (Text Autosizing).
+  function boostFactor(){
+    const p=document.createElement('div');
+    p.style.cssText='position:absolute;left:-9999px;top:0;font-size:12px;line-height:1;'
+      +'font-family:sans-serif;white-space:nowrap';
+    p.textContent='Die schnelle braune Elster fliegt ueber zwoelf Baeume und singt dabei laut';
+    document.body.appendChild(p);
+    const h=p.getBoundingClientRect().height;
+    p.remove();
+    return (h/12).toFixed(2); // ~1.0 = normal, deutlich >1.2 = geboostet
+  }
   function scan(){
     const vw=window.innerWidth;
+    const vv=window.visualViewport;
     const hits=[];
     document.querySelectorAll('body *').forEach(el=>{
-      const r=el.getBoundingClientRect();
-      if(r.width>0 && r.right>vw+1){
-        hits.push({el,over:Math.round(r.right-vw),w:Math.round(r.width),left:Math.round(r.left)});
-      }
+      const w=el.getBoundingClientRect().width;
+      if(w>vw+1 && !inScrollBox(el)) hits.push({el,w:Math.round(w)});
     });
-    hits.sort((a,b)=>b.over-a.over);
-    const top=hits.slice(0,10);
-    let old=document.getElementById('__debugbox');
-    if(old) old.remove();
+    hits.sort((a,b)=>b.w-a.w);
+    const top=hits.slice(0,8).map(t=>{
+      const el=t.el, id=el.id?('#'+el.id):'';
+      const cls=(typeof el.className==='string'&&el.className)?'.'+el.className.trim().split(/\s+/).join('.'):'';
+      return t.w+'px  <'+el.tagName.toLowerCase()+id+cls+'>';
+    });
+    let old=document.getElementById('__debugbox'); if(old) old.remove();
     const box=document.createElement('div');
     box.id='__debugbox';
     box.style.cssText='position:fixed;top:0;left:0;right:0;z-index:999999;background:#000;color:#0f0;'
-      +'font:11px/1.5 monospace;padding:8px;max-height:60vh;overflow:auto;white-space:pre-wrap;'
+      +'font:12px/1.5 monospace;padding:8px;max-height:70vh;overflow:auto;white-space:pre-wrap;'
       +'border-bottom:2px solid #0f0';
-    const lines=top.map(t=>{
-      const el=t.el;
-      const id=el.id?('#'+el.id):'';
-      const cls=(el.className&&typeof el.className==='string')?'.'+el.className.trim().split(/\s+/).join('.'):'';
-      return '+'+t.over+'px  <'+el.tagName.toLowerCase()+id+cls+'>  breite='+t.w+' links='+t.left;
-    });
-    box.textContent='innerWidth='+vw+'  scrollWidth='+document.documentElement.scrollWidth
-      +'  (antippen zum Neu-Scannen)\n\n'+(lines.length?lines.join('\n'):'Kein Element ragt raus.');
+    box.textContent=
+      'ZOOM (visualViewport.scale) = '+(vv?vv.scale.toFixed(3):'?')+'\n'+
+      'Font-Boost-Faktor = '+boostFactor()+'   (>1.2 = Chrome blaeht Schrift auf)\n'+
+      'innerWidth='+vw+'  vViewport.width='+(vv?Math.round(vv.width):'?')
+        +'  scrollWidth='+document.documentElement.scrollWidth+'\n'+
+      'screen.width='+screen.width+'  dpr='+window.devicePixelRatio+'\n'+
+      '(antippen zum Neu-Scannen)\n\nZu breite Elemente (ohne Scroll-Container):\n'+
+      (top.length?top.join('\n'):'KEINES – Seite passt in die Breite.');
     box.onclick=scan;
     document.body.appendChild(box);
   }
