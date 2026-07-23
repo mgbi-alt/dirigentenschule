@@ -336,6 +336,12 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   #mainNav{order:3;flex-basis:100%;overflow-x:auto}
   .hero h1{font-size:24px}
   #appMain{padding:16px 10px 50px}
+  /* Kopfzeile: rechter Block darf umbrechen + schrumpfen, damit "Passwort
+     aendern"/"Abmelden" bei 360px Breite nicht ueber den rechten Rand rutschen. */
+  #appHeader{gap:10px;padding:10px 12px}
+  .hd-right{flex-wrap:wrap;gap:8px;justify-content:flex-end;min-width:0}
+  .viewas-sel{max-width:100%}
+  .hd-right .btn-ghost{padding:6px 11px;font-size:13px}
   /* Stundenplan: Fächer nebeneinander, horizontal scrollbar, kleinere Schrift */
   .tt-slot{gap:8px}
   .tt-time{flex:0 0 54px;font-size:11px;padding-top:24px}
