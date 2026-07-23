@@ -164,6 +164,53 @@ async function changeOwnPassword(){
     return true;
   });
 }
+// ---------- Benutzer-Menü (oben rechts) ----------
+// Zeigt Avatar (Bild oder Symbol) und klappt Konto-Funktionen auf.
+function renderUserMenu(){
+  const btn=$('#userMenuBtn'); if(!btn) return;
+  const url=realPerson&&realPerson.bild_url;
+  if(url){ btn.style.backgroundImage=`url("${url}")`; btn.classList.add('has-img'); }
+  else{ btn.style.backgroundImage=''; btn.classList.remove('has-img'); }
+}
+function toggleUserMenu(force){
+  const pop=$('#userMenuPop'), btn=$('#userMenuBtn'); if(!pop) return;
+  const open = force!==undefined ? force : pop.hidden;
+  pop.hidden=!open;
+  if(btn) btn.setAttribute('aria-expanded', open?'true':'false');
+}
+// Eigene Kontaktdaten bearbeiten (immer die tatsaechlich angemeldete Person,
+// auch wenn ein Admin gerade "Ansicht als" nutzt). RLS erlaubt das Aendern der
+// eigenen Zeile; Rolle/Rechte sind per DB-Trigger geschuetzt.
+function editOwnData(){
+  const p=realPerson; if(!p){ toast('Nicht angemeldet.','err'); return; }
+  const body=`<label>Vorname<input type="text" id="od_vn" value="${esc(p.vorname||'')}"></label>
+    <label>Nachname<input type="text" id="od_nn" value="${esc(p.nachname||'')}"></label>
+    <label>Gemeinde<input type="text" id="od_gem" value="${esc(p.gemeinde||'')}"></label>
+    <label>E-Mail (Kontakt)<input type="email" id="od_mail" value="${esc(p.email||'')}"></label>
+    <label>Telefon<input type="text" id="od_tel" value="${esc(p.telefon||'')}"></label>
+    <label>Bild ${p.bild_url?'(neues ersetzt das alte)':''}<input type="file" id="od_img" accept="image/*"></label>
+    <p class="muted" style="font-size:.85em">Hinweis: Die Kontakt-E-Mail hier ändert nicht deine Login-Adresse.</p>`;
+  openDialog('Eigene Daten ändern', body, async()=>{
+    const upd={
+      vorname:$('#od_vn').value.trim()||null,
+      nachname:$('#od_nn').value.trim()||null,
+      gemeinde:$('#od_gem').value.trim()||null,
+      email:$('#od_mail').value.trim()||null,
+      telefon:$('#od_tel').value.trim()||null,
+    };
+    if(!upd.nachname){ toast('Nachname darf nicht leer sein.','err'); return false; }
+    const f=$('#od_img').files[0];
+    if(f){ const url=await uploadFile(f,'avatars',p.id); if(url) upd.bild_url=url+'?v='+Date.now(); }
+    const {error}=await SB.from('people').update(upd).eq('id',p.id);
+    if(error){ toast(error.message,'err'); return false; }
+    Object.assign(p,upd);
+    if(currentPerson && currentPerson.id===p.id) Object.assign(currentPerson,upd);
+    renderUserMenu();
+    if(!viewAsId) $('#userBadge').textContent=fullName(realPerson);
+    if($('.page.active')?.id==='page-kontakte') renderContacts();
+    toast('Gespeichert.');
+  });
+}
 function applyAuthGate(){
   const inApp = !!session;
   $('#authGate').hidden = inApp;
@@ -202,12 +249,12 @@ async function afterSession(){
     if(currentPerson && !currentPerson.auth_id){
       SB.from('people').update({auth_id:session.user.id}).eq('id',currentPerson.id).then(()=>{});
     }
-    $('#logoutBtn').hidden=false;
-    $('#pwChangeBtn').hidden=false;
+    $('#userMenu').hidden=false;
     $('#userBadge').textContent = currentPerson ? fullName(currentPerson) : email;
+    renderUserMenu();
     startHeartbeat();
   }else{
-    $('#logoutBtn').hidden=true; $('#pwChangeBtn').hidden=true; $('#userBadge').textContent='';
+    $('#userMenu').hidden=true; $('#userBadge').textContent='';
     stopHeartbeat();
   }
   applyRoleFlags();
@@ -2094,11 +2141,14 @@ function bind(){
   $('#gateLogin').onclick=gateLogin;
   $('#gatePass').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
   $('#gateEmail').onkeydown=e=>{ if(e.key==='Enter') gateLogin(); };
-  $('#logoutBtn').onclick=()=>SB.auth.signOut();
+  $('#userMenuBtn').onclick=e=>{ e.stopPropagation(); toggleUserMenu(); };
+  $('#ownDataBtn').onclick=()=>{ toggleUserMenu(false); editOwnData(); };
+  $('#logoutBtn').onclick=()=>{ toggleUserMenu(false); SB.auth.signOut(); };
+  document.addEventListener('click', e=>{ const m=$('#userMenu'); if(m && !m.hidden && !m.contains(e.target)) toggleUserMenu(false); });
   $('#gateForgotBtn').onclick=gateForgotPassword;
   $('#pwrSaveBtn').onclick=savePasswordReset;
   $('#pwrNew2').onkeydown=e=>{ if(e.key==='Enter') savePasswordReset(); };
-  $('#pwChangeBtn').onclick=changeOwnPassword;
+  $('#pwChangeBtn').onclick=()=>{ toggleUserMenu(false); changeOwnPassword(); };
   $('#viewAs').onchange=function(){ setViewAs(this.value); };
   $('#contactSearch').oninput=renderContacts;
   $('#infoDocSel').onchange=renderInfoTab;

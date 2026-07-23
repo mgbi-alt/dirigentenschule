@@ -61,9 +61,17 @@
   </nav>
   <div class="hd-right">
     <span id="viewAsWrap" hidden><select id="viewAs" class="viewas-sel"></select></span>
-    <span id="userBadge" class="user-badge"></span>
-    <button id="pwChangeBtn" class="btn-ghost" hidden>Passwort ändern</button>
-    <button id="logoutBtn" class="btn-ghost" hidden>Abmelden</button>
+    <div class="user-menu" id="userMenu" hidden>
+      <button class="user-menu-btn" id="userMenuBtn" aria-haspopup="true" aria-expanded="false" title="Konto">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4 4-6 8-6s8 2 8 6"></path></svg>
+      </button>
+      <div class="user-menu-pop" id="userMenuPop" hidden>
+        <div class="user-menu-name" id="userBadge"></div>
+        <button class="user-menu-item" id="ownDataBtn">Eigene Daten ändern</button>
+        <button class="user-menu-item" id="pwChangeBtn">Passwort ändern</button>
+        <button class="user-menu-item" id="logoutBtn">Abmelden</button>
+      </div>
+    </div>
   </div>
 </header>
 
