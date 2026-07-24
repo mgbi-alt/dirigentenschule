@@ -230,6 +230,7 @@ function applyRoleFlags(){
   $('#ttAddBtn').hidden = !canEdit('stundenplan');
   $('#calAddBtn').hidden = !canEdit('kalender');
   $('#ttTimesBtn').hidden = !isAdmin;   // „Zeiten" nur für Admin
+  $$('.xls-export-btn').forEach(b=>b.hidden=!isStaff);   // Excel-Export nicht fuer Schueler
   // Lehrer/Schüler standardmäßig „Mein Plan", Admin „Gesamtplan"
   const tv=$('#ttView'); if(tv) tv.value = isAdmin ? 'all' : 'mine';
 }
@@ -694,7 +695,7 @@ function renderPractice(){
   // oder Schüler-Filter) ist die Name-Spalte redundant.
   const singleStudent = rows.length>0 && new Set(rows.map(r=>r.person_id)).size===1;
   const head=`<tr><th>Jahr</th><th>KW</th><th>Datum</th>${singleStudent?'':'<th class="name">Name</th>'}
-    ${SUBJECTS.map(s=>`<th>${s.label}</th>`).join('')}<th class="sum">Gesamt</th><th>Ferien</th></tr>`;
+    ${SUBJECTS.map(s=>`<th>${s.label}</th>`).join('')}<th class="sum">Gesamt</th></tr>`;
   const body = rows.map(r=>{
     const p=personById(r.person_id);
     const canEditRow = canEdit('zeiten') || (currentPerson&&currentPerson.id===r.person_id);
@@ -703,11 +704,11 @@ function renderPractice(){
       const v=+r[sub.key]||0;
       return `<td class="${practiceCellClass(v,r.ferien)}">${v} <span class="muted">Min</span></td>`;
     }).join('');
+    const kw=r.ferien?`${r.kw} <span class="badge-ferien" title="Ferien">F</span>`:r.kw;
     return `<tr class="${canEditRow?'cell-edit':''}" ${canEditRow?`onclick="editPractice('${r.id}')"`:''}>
-      <td>${r.jahr}</td><td>${r.kw}</td><td>${kwRange(r.jahr,r.kw)}</td>
+      <td>${r.jahr}</td><td>${kw}</td><td>${kwRange(r.jahr,r.kw)}</td>
       ${singleStudent?'':`<td class="name">${esc(fullName(p))}</td>`}${cells}
-      <td class="sum ${gesamtClass(sum,r.ferien)}">${sum} Min</td>
-      <td>${r.ferien?'✓':'–'}</td></tr>`;
+      <td class="sum ${gesamtClass(sum,r.ferien)}">${sum} Min</td></tr>`;
   }).join('');
   $('#practiceTable').innerHTML = rows.length
     ? `<table>${head}${body}</table>` : '<p class="muted" style="padding:14px">Keine Einträge für diese Auswahl.</p>';
@@ -955,6 +956,8 @@ async function ensureIcsToken(){
 }
 async function renderCalSubscribeBox(){
   const box=$('#calSubscribeBox'); if(!box) return;
+  // Vorerst nur fuer Admins sichtbar (Feature noch in Erprobung).
+  if(!isAdmin){ box.innerHTML=''; return; }
   const token=await ensureIcsToken();
   if(!token){ box.innerHTML=''; return; }
   const httpUrl=`${SB_URL}/functions/v1/ics-feed?token=${encodeURIComponent(token)}`;
@@ -1188,7 +1191,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const lineH=(prefix,htmlVal,plainCur,plainOld,changed,cls)=> changed
     ? `<div class="tt-meta tt-chg">${prefix}${plainOld?`<s>${esc(plainOld)}</s> `:''}${plainCur?esc(plainCur):'<em>–</em>'}</div>`
     : (htmlVal?`<div class="${cls||'tt-meta'}">${prefix}${htmlVal}</div>`:'');
-  const cellHtml=r=>{
+  const cellHtml=(r, siblingCount=1)=>{
     const baseR = diffMode ? baseById.get(r.source_id) : null;
     const isNew = diffMode && !baseR;
     const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
@@ -1207,7 +1210,11 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     if(lehR||ch('leh'))      lines.push(lineH('L: ', lehR, c.leh, b.leh, ch('leh')));
     if(klaR||ch('kla'))      lines.push(lineH('K: ', klaR, c.kla, b.kla, ch('kla')));
     if(c.raum||ch('raum'))   lines.push(line('R: ', c.raum, b.raum, ch('raum'), 'tt-room'));
-    const pad=c.ueber?5:4; while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
+    // Nur auffuellen, wenn mehrere Zellen desselben Fachs nebeneinander/untereinander
+    // stehen (Ausrichtung noetig) -- eine einzelne Zelle soll nicht kuenstlich
+    // aufgeblaeht werden, nur weil sie z.B. kein "K:" (Klavier) hat.
+    const pad = siblingCount>1 ? (c.ueber?5:4) : lines.length;
+    while(lines.length<pad) lines.push('<div class="tt-meta">&nbsp;</div>');
     const changed = isNew || (baseR && ['ueber','stu','leh','kla','raum'].some(ch));
     const cls = [cancelled?'tt-cancelled':'', isNew?'tt-new':(changed?'tt-changed':''), edit?'editable':''].filter(Boolean).join(' ');
     const badge = cancelled?'<span class="tt-badge">entfällt</span>':(isNew?'<span class="tt-badge">neu</span>':'');
@@ -1229,8 +1236,11 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
-      const pc=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0)).map(cellHtml);
-      const rc=removedRows.filter(r=>r.fach===f).map(removedCell);
+      const planForFach=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0));
+      const removedForFach=removedRows.filter(r=>r.fach===f);
+      const siblingCount=planForFach.length+removedForFach.length;
+      const pc=planForFach.map(r=>cellHtml(r,siblingCount));
+      const rc=removedForFach.map(removedCell);
       const header = FACH_ORDER.includes(f) ? `<div class="tt-fach">${esc(f)}</div>` : '';
       return `<div class="tt-subject">${header}<div class="tt-cells${horiz}">${pc.concat(rc).join('')}</div></div>`;
     }).join('');

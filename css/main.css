@@ -163,6 +163,8 @@ td.sum{font-weight:700;color:var(--accent2)}
 .cell-green{background:var(--green-bg)}
 .cell-input{width:60px;background:transparent;border:none;color:var(--text);text-align:center;font-size:13px;cursor:pointer}
 .cell-input:focus{outline:1px solid var(--accent)}
+.badge-ferien{display:inline-block;font-size:9px;font-weight:700;color:#5f85ab;background:rgba(143,179,217,.18);
+  border-radius:4px;padding:1px 4px;vertical-align:middle;margin-left:2px}
 /* Pivotierte Einzelschueler-Tabellen (Zeile=Treffen/Kriterium, statt Spalte) */
 .pivot-table td:first-child,.pivot-table th:first-child{text-align:left}
 .pivot-table td:last-child{font-weight:600}
@@ -175,6 +177,12 @@ td.sum{font-weight:700;color:var(--accent2)}
    umzubrechen (gleiches Prinzip wie #mainNav). */
 .cal-toolbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
 .cal-toolbar>*{flex:0 0 auto}
+@media(max-width:480px){
+  /* Auf dem Handy reicht "‹ / ›" statt der ausgeschriebenen Monatsnamen --
+     so passen alle Buttons ohne Scrollen in eine Zeile. */
+  .cal-toolbar .btn-label{display:none}
+  .cal-toolbar .btn-ghost{padding:8px 12px}
+}
 .filters label,.import-row label{font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:3px}
 select,input[type=text],input[type=email],input[type=password],input[type=date],.search-input,.ta{
   background:var(--bg2);border:1px solid var(--border);color:var(--text);
@@ -304,7 +312,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 /* ---- Stundenplan ---- */
 .tt-slot{display:flex;gap:14px;margin-bottom:14px;align-items:flex-start}
 .tt-time{flex:0 0 92px;font-weight:600;color:var(--accent2);font-size:13px;padding-top:6px}
-.tt-subjects{display:flex;gap:12px;flex-wrap:wrap;flex:1}
+.tt-subjects{display:flex;gap:12px;flex-wrap:wrap;flex:1;align-items:flex-start}
 .tt-subject{flex:1;min-width:150px}
 .tt-fach{font-size:14px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.6px;
   margin-bottom:7px;border-bottom:2px solid var(--accent);padding-bottom:4px}
@@ -386,7 +394,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   .hd-right .btn-ghost{padding:6px 11px;font-size:13px}
   /* Stundenplan: Fächer nebeneinander, horizontal scrollbar, kleinere Schrift */
   .tt-slot{gap:8px}
-  .tt-time{flex:0 0 54px;font-size:11px;padding-top:24px}
+  .tt-time{flex:0 0 54px;font-size:11px;padding-top:6px}
   .tt-subjects{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:6px}
   .tt-subject{flex:0 0 auto;min-width:116px}
   .tt-cells.row{flex-wrap:nowrap}
