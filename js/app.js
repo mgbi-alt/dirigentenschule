@@ -1267,7 +1267,12 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     return `<div class="tt-cell tt-removed ${edit?'editable':''}" ${edit?`onclick="adoptBaseLesson('${r.id}','${planId}')" title="Neue Grundplan-Stunde in diesen Treffen-Plan übernehmen"`:''}><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
   };
   const subjectsHtml=(planRows,removedRows)=>{
-    const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))].sort((a,b)=>fachIdx(a)-fachIdx(b));
+    // Faecher mit aktiver Stunde immer vor reinen Grundplan-Resten, die hier nur
+    // noch als "entfaellt" auftauchen (z.B. Arrangieren durch Formenlehre ersetzt)
+    // -- sonst stuende das ersetzte Fach vor dem tatsaechlich stattfindenden.
+    const hasActive=f=>planRows.some(r=>r.fach===f);
+    const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))]
+      .sort((a,b)=>(hasActive(a)?0:1)-(hasActive(b)?0:1) || fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
       const planForFach=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0));
