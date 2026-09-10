@@ -394,8 +394,9 @@ function renderStart(){
   const absLi=a=>{ const p=personById(a.person_id);
     const rolle=p?(roleLabelMap[primaryRole(p)]||'Schüler'):'Schüler';
     const tage=a.tage&&a.tage!=='fr_sa'?`, ${absTageLabel(a.tage)}`:'';
+    const zeit=absZeitLabel(a)?`, ${absZeitLabel(a)}`:'';
     const editBtn=canAbs?` <button type="button" class="btn-ghost mini" onclick="editAbsenceInline('${a.id}')">Bearbeiten</button>`:'';
-    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle}${tage})</span>${a.grund?` – ${esc(a.grund)}`:''}${editBtn}</li>`; };
+    return `<li>${esc(p?fullName(p):'?')} <span class="muted">(${rolle}${tage}${zeit})</span>${a.grund?` – ${esc(a.grund)}`:''}${editBtn}</li>`; };
   const infoHtml=a=>`<div class="ann-block"><h4>${esc(a.titel)} ${a.datum?`<span class="date">${fmtDate(a.datum)}</span>`:''}</h4>
       <div class="ann-body">${sanitizeHtml(a.text)}</div>
       ${canInfo?`<div class="ann-actions"><button class="btn-ghost" onclick="openAnnEditor('${a.id}')">Bearbeiten</button>
@@ -1142,6 +1143,24 @@ function lessonIsMine(r, token){
 function lessonKey(r){ return `${r.zeit}|${r.fach}|${r.sort}`; }
 // tage: 'fr'=nur Freitag, 'sa'=nur Samstag, 'fr_sa'=beide (Standard)
 function absTageLabel(t){ return t==='fr'?'Freitag':t==='sa'?'Samstag':'Fr+Sa'; }
+// von_zeit/bis_zeit: optional, Default (beide leer) = ganzer Tag
+function absZeitLabel(a){
+  const f=t=>t?String(t).slice(0,5):'';
+  if(a.von_zeit && a.bis_zeit) return `${f(a.von_zeit)}–${f(a.bis_zeit)}`;
+  if(a.von_zeit) return `ab ${f(a.von_zeit)}`;
+  if(a.bis_zeit) return `bis ${f(a.bis_zeit)}`;
+  return '';
+}
+function timeToMin(t){ // "HH:MM" oder "HH:MM:SS" (Postgres time) -> Minuten seit 0:00
+  const m=t&&String(t).match(/^(\d{1,2}):(\d{2})/);
+  return m?(+m[1]*60+ +m[2]):null;
+}
+// Zeitraster-Label ist Freitext (z.B. "9:15 - 10:00"); extrahiert Start/Ende in
+// Minuten, oder null wenn nicht im erwarteten Format.
+function parseZeitRange(label){
+  const m=label&&String(label).match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+  return m?{start:+m[1]*60+ +m[2], end:+m[3]*60+ +m[4]}:null;
+}
 function absCoversDay(a, day){
   const t=a.tage||'fr_sa';
   if(t==='fr_sa') return true;
@@ -1149,9 +1168,24 @@ function absCoversDay(a, day){
   if(t==='sa') return day==='samstag';
   return true;
 }
-// day optional ('freitag'/'samstag'): ohne Angabe alle Abmeldungen des Treffens, unabhaengig vom Tag
-function absentSetForPlan(planId, day){
-  return new Set(cache.absences.filter(a=>a.plan_id===planId && (!day || absCoversDay(a,day))).map(a=>a.person_id));
+// Prueft, ob eine Abmeldung `a` eine konkrete Stunde abdeckt (Tag + optional
+// Uhrzeit gegen das Zeitraster-Label der Stunde). Ohne von_zeit/bis_zeit gilt
+// der ganze Tag als abgedeckt. Kann die Stundenzeit nicht geparst werden, wird
+// sicherheitshalber von einer Abdeckung ausgegangen (wie vor Einfuehrung der
+// Uhrzeit, rein tagesbasiert).
+function absCoversLesson(a, day, zeitLabel){
+  if(!absCoversDay(a, day)) return false;
+  if(!a.von_zeit && !a.bis_zeit) return true;
+  const range=parseZeitRange(zeitLabel);
+  if(!range) return true;
+  const von=a.von_zeit?timeToMin(a.von_zeit):0;
+  const bis=a.bis_zeit?timeToMin(a.bis_zeit):24*60;
+  return range.start<bis && range.end>von;
+}
+// day optional ('freitag'/'samstag'): ohne Angabe alle Abmeldungen des Treffens, unabhaengig vom Tag.
+// zeitLabel optional: grenzt zusaetzlich auf eine konkrete Stunde ein (siehe absCoversLesson).
+function absentSetForLesson(planId, day, zeitLabel){
+  return new Set(cache.absences.filter(a=>a.plan_id===planId && (!day || absCoversLesson(a,day,zeitLabel))).map(a=>a.person_id));
 }
 function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===planId); }
 function sortedAbsences(planId){
@@ -1184,7 +1218,6 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
   const slots=[...new Set(rows.concat(baseRows).map(r=>r.zeit))].sort((a,b)=>slotSortFor(a)-slotSortFor(b));
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
-  const absentSet = absentSetForPlan(planId, day);
   const line=(prefix,cur,old,changed,cls)=> changed
     ? `<div class="tt-meta tt-chg">${prefix}${old?`<s>${esc(old)}</s> `:''}${cur?esc(cur):'<em>–</em>'}</div>`
     : (cur?`<div class="${cls||'tt-meta'}">${prefix}${esc(cur)}</div>`:'');
@@ -1196,10 +1229,11 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     const isNew = diffMode && !baseR;
     const c=lessonFields(r), b=baseR?lessonFields(baseR):{};
     const ch=k=> !!baseR && (c[k]||'')!==(b[k]||'');
-    const cancelled=lessonCancelled(r, absentSet);
-    const stuR=tokensHtml(r.schueler_ids, r.schueler, absentSet, 'tt-absent');
-    const lehR=tokensHtml(r.lehrer_ids, r.lehrer, absentSet, 'tt-absent-t');
-    const klaR=tokensHtml(r.klavier_ids, r.klavier, absentSet, 'tt-absent-t');
+    const rowAbsentSet=absentSetForLesson(planId, day, r.zeit);
+    const cancelled=lessonCancelled(r, rowAbsentSet);
+    const stuR=tokensHtml(r.schueler_ids, r.schueler, rowAbsentSet, 'tt-absent');
+    const lehR=tokensHtml(r.lehrer_ids, r.lehrer, rowAbsentSet, 'tt-absent-t');
+    const klaR=tokensHtml(r.klavier_ids, r.klavier, rowAbsentSet, 'tt-absent-t');
     const lines=[];
     const pruefSuffix=r.pruefung_notiz?`: ${esc(r.pruefung_notiz)}`:'';
     if(r.pruefung) lines.push(`<div class="tt-pruef-tag">Prüfung${pruefSuffix}</div>`);
@@ -1264,7 +1298,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     }
     return `<div class="tt-slot"><div class="tt-time">${esc(zeit)}</div><div class="tt-subjects">${subjectsHtml(slotRows,removed)}</div></div>`;
   }).join('');
-  return { html, conflicts: edit?planConflicts(rows, absentSet):[], empty: slots.length===0 };
+  return { html, conflicts: edit?planConflicts(rows, planId, day):[], empty: slots.length===0 };
 }
 function renderStundenplan(){
   fillPlanSelect();
@@ -1299,11 +1333,11 @@ function renderDayButtons(days){
   c.innerHTML = days.map(d=>`<button class="sub-btn ${d===ttSelectedDay?'active':''}" onclick="selectDay('${d}')">${d==='freitag'?'Freitag':'Samstag'}</button>`).join('');
 }
 function selectDay(d){ ttSelectedDay=d; renderStundenplan(); }
-function planConflicts(planRows, absentSet){
-  absentSet=absentSet||new Set();
+function planConflicts(planRows, planId, day){
   const out=[], byZeit={};
-  planRows.forEach(r=>{ if(r.fach==='Pause'||lessonCancelled(r,absentSet))return; (byZeit[r.zeit]=byZeit[r.zeit]||[]).push(r); });
+  planRows.forEach(r=>{ if(r.fach==='Pause'||lessonCancelled(r,absentSetForLesson(planId,day,r.zeit)))return; (byZeit[r.zeit]=byZeit[r.zeit]||[]).push(r); });
   Object.keys(byZeit).forEach(zeit=>{
+    const absentSet=absentSetForLesson(planId,day,zeit);
     const rs=byZeit[zeit], pmap=new Map();
     const add=(ids,r)=> (ids||[]).forEach(id=>{ if(absentSet.has(id))return; if(!pmap.has(id)) pmap.set(id,new Map()); pmap.get(id).set(r.id,r.fach); });
     rs.forEach(r=>{ add(r.schueler_ids,r); add(r.lehrer_ids,r); add(r.klavier_ids,r); });
@@ -1446,12 +1480,25 @@ function tageSelectHtml(id, selected){
     <option value="sa" ${sel==='sa'?'selected':''}>nur Samstag</option>
   </select>`;
 }
+// von_zeit/bis_zeit: beide leer = ganzer Tag (Default)
+function absZeitInputsHtml(prefix, a){
+  a=a||{};
+  const von=a.von_zeit?String(a.von_zeit).slice(0,5):'', bis=a.bis_zeit?String(a.bis_zeit).slice(0,5):'';
+  return `<input type="time" id="${prefix}_von" value="${von}" title="Von (leer = ab Tagesbeginn)" style="width:110px">
+    <span class="muted">–</span>
+    <input type="time" id="${prefix}_bis" value="${bis}" title="Bis (leer = bis Tagesende)" style="width:110px">`;
+}
+function readAbsZeit(prefix){
+  return { von_zeit:$(`#${prefix}_von`).value||null, bis_zeit:$(`#${prefix}_bis`).value||null };
+}
 function manageAbsences(planId){
   const plan=cache.plans.find(p=>p.id===planId);
   const list=sortedAbsences(planId);
   const rows=list.map(a=>{ const p=personById(a.person_id);
     const tageBadge=a.tage&&a.tage!=='fr_sa'?` <span class="muted">(${absTageLabel(a.tage)})</span>`:'';
-    return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${tageBadge}${a.grund?` – ${esc(a.grund)}`:''}</span>
+    const zeitLabel=absZeitLabel(a);
+    const zeitBadge=zeitLabel?` <span class="muted">[${esc(zeitLabel)}]</span>`:'';
+    return `<div class="gc-row" data-id="${a.id}"><span style="flex:1">${esc(p?fullName(p):'?')}${tageBadge}${zeitBadge}${a.grund?` – ${esc(a.grund)}`:''}</span>
       <button type="button" class="btn-ghost" onclick="delAbsence('${a.id}','${planId}')">✕</button></div>`; }).join('');
   const peopleOpts=cache.people.filter(p=>p.aktiv).sort(byName)
     .map(p=>`<option value="${p.id}">${esc(fullName(p))} (${personRoles(p).join('/')||'–'})</option>`).join('');
@@ -1460,6 +1507,10 @@ function manageAbsences(planId){
       <select id="absPerson" style="flex:1">${peopleOpts}</select>
       ${tageSelectHtml('absTage')}
       <input id="absGrund" placeholder="Grund" style="width:120px">
+    </div>
+    <div class="gc-row">
+      <span class="muted">Uhrzeit (optional, sonst ganzer Tag)</span>
+      ${absZeitInputsHtml('abs')}
       <button type="button" class="btn-primary" onclick="addAbsence('${planId}')">+</button>
     </div>`;
   openDialog(`Abmeldungen – ${esc(plan?plan.name:'')}`, body, ()=>{});
@@ -1483,12 +1534,14 @@ function addAbsenceDialog(){
   const body=`<label>Treffen<select id="ab_plan">${tOpts}</select></label>
     <label>Person<select id="ab_person">${pOpts}</select></label>
     <label>Tag${tageSelectHtml('ab_tage')}</label>
+    <label>Uhrzeit (optional, sonst ganzer Tag)<div class="gc-row">${absZeitInputsHtml('ab')}</div></label>
     <label>Grund<input id="ab_grund" placeholder="z.B. krank"></label>`;
   openDialog('Abmeldung hinzufügen', body, async()=>{
     const plan_id=$('#ab_plan').value, person_id=$('#ab_person').value, grund=$('#ab_grund').value.trim()||null;
     const tage=$('#ab_tage').value;
+    const {von_zeit,bis_zeit}=readAbsZeit('ab');
     if(!plan_id||!person_id){ toast('Treffen/Person fehlt','err'); return false; }
-    const {data,error}=await SB.from('absences').upsert({plan_id,person_id,grund,tage},{onConflict:'plan_id,person_id'}).select().single();
+    const {data,error}=await SB.from('absences').upsert({plan_id,person_id,grund,tage,von_zeit,bis_zeit},{onConflict:'plan_id,person_id'}).select().single();
     if(error){ toast(error.message,'err'); return false; }
     const i=cache.absences.findIndex(a=>a.plan_id===plan_id&&a.person_id===person_id);
     if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
@@ -1499,7 +1552,8 @@ async function addAbsence(planId){
   const pid=$('#absPerson').value; if(!pid) return;
   const grund=$('#absGrund').value.trim();
   const tage=$('#absTage').value;
-  const {data,error}=await SB.from('absences').upsert({plan_id:planId,person_id:pid,grund:grund||null,tage},{onConflict:'plan_id,person_id'}).select().single();
+  const {von_zeit,bis_zeit}=readAbsZeit('abs');
+  const {data,error}=await SB.from('absences').upsert({plan_id:planId,person_id:pid,grund:grund||null,tage,von_zeit,bis_zeit},{onConflict:'plan_id,person_id'}).select().single();
   if(error){ toast(error.message,'err'); return; }
   const i=cache.absences.findIndex(a=>a.plan_id===planId&&a.person_id===pid);
   if(i>=0) cache.absences[i]=data; else cache.absences.push(data);
@@ -1519,10 +1573,12 @@ function editAbsenceInline(id){
   const p=personById(a.person_id);
   const body=`<p class="muted">${esc(p?fullName(p):'?')}</p>
     <label>Tag${tageSelectHtml('eab_tage', a.tage||'fr_sa')}</label>
+    <label>Uhrzeit (optional, sonst ganzer Tag)<div class="gc-row">${absZeitInputsHtml('eab', a)}</div></label>
     <label>Grund<input id="eab_grund" value="${esc(a.grund||'')}" placeholder="z.B. krank"></label>
     <button type="button" class="btn-ghost" onclick="delAbsenceInline('${id}')">Abmeldung löschen</button>`;
   openDialog(`Abmeldung – ${p?esc(fullName(p)):''}`, body, async()=>{
-    const upd={tage:$('#eab_tage').value, grund:$('#eab_grund').value.trim()||null};
+    const {von_zeit,bis_zeit}=readAbsZeit('eab');
+    const upd={tage:$('#eab_tage').value, grund:$('#eab_grund').value.trim()||null, von_zeit, bis_zeit};
     const {error}=await SB.from('absences').update(upd).eq('id',id);
     if(error){ toast(error.message,'err'); return false; }
     Object.assign(a,upd);
