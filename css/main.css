@@ -301,6 +301,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .contact-card .edit-btn{margin-top:8px;font-size:12px;padding:4px 10px}
 .cell-edit{cursor:pointer}
 .cell-edit:hover{outline:1px solid var(--accent)}
+.cell-absent{background:var(--red-bg);color:var(--err);font-style:italic}
 
 /* ---- Bewertungsspalten-Verwaltung ---- */
 .gc-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}

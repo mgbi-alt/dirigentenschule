@@ -1188,6 +1188,15 @@ function absentSetForLesson(planId, day, zeitLabel){
   return new Set(cache.absences.filter(a=>a.plan_id===planId && (!day || absCoversLesson(a,day,zeitLabel))).map(a=>a.person_id));
 }
 function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===planId); }
+// Fuer Tabellen ohne eigene Tag/Uhrzeit-Zuordnung (z.B. Test-Spalten): Person
+// gilt als abwesend, wenn irgendeine Abmeldung fuer dieses Treffen vorliegt.
+function personAbsentForPlan(pid, planId){
+  return !!planId && cache.absences.some(a=>a.plan_id===planId && a.person_id===pid);
+}
+function absReasonForPlan(pid, planId){
+  const a=cache.absences.find(a=>a.plan_id===planId && a.person_id===pid);
+  return a?(a.grund||'Abgemeldet'):'';
+}
 function sortedAbsences(planId){
   const staff=p=>p&&(hasRole(p,'lehrer')||hasRole(p,'klassenleitung')||hasRole(p,'admin'))?0:1;
   return absencesForPlan(planId).slice().sort((a,b)=>{
@@ -1828,6 +1837,18 @@ function testColText(c){
   const pl=testColPlan(c);
   return pl ? `${pl.name||'Treffen'}${treffenDateLabel(pl)?' · '+treffenDateLabel(pl):''}` : c.label;
 }
+// Baut eine Test-Ergebnis-Zelle; markiert sie, wenn fuer die Person eine
+// Abmeldung zum Treffen der Spalte vorliegt (test_columns.plan_id). Ohne
+// Ergebnis erscheint dann "abw." statt "–", der Grund als Tooltip.
+function testCellHtml(p, c, r, edit, fach){
+  const v=r?Math.round(r.ergebnis):null;
+  const absent=personAbsentForPlan(p.id, c.plan_id);
+  const txt=v==null?(absent?'abw.':'–'):v+'%';
+  const cls=[edit?'cell-edit':'', absent?'cell-absent':''].filter(Boolean).join(' ');
+  const title=absent?` title="${esc(absReasonForPlan(p.id,c.plan_id))}"`:'';
+  const attrs=edit?` data-test-cell data-pid="${esc(p.id)}" data-fach="${esc(fach)}" data-label="${esc(c.label)}" data-sort="${esc(c.sort)}"`:'';
+  return { v, html:`<td${cls?` class="${cls}"`:''}${attrs}${title}>${txt}</td>` };
+}
 function renderTests(fach, sel){
   const rows=cache.tests.filter(t=>t.fach===fach);
   const cols=testColsFor(fach);
@@ -1837,16 +1858,12 @@ function renderTests(fach, sel){
   // Bei genau einem Schüler: Test-Termine als Zeilen statt Spalten, Ø ganz unten.
   if(students.length===1){
     const p=students[0];
-    const vals=cols.map(c=>{
+    const cells=cols.map(c=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
-      return r?Math.round(r.ergebnis):null;
+      return testCellHtml(p,c,r,edit,fach);
     });
-    const cellRows=cols.map((c,i)=>{
-      const v=vals[i], txt=v==null?'–':v+'%';
-      const td=edit?`<td class="cell-edit" data-test-cell data-pid="${esc(p.id)}" data-fach="${esc(fach)}" data-label="${esc(c.label)}" data-sort="${esc(c.sort)}">${txt}</td>`:`<td>${txt}</td>`;
-      return `<tr><td>${testColText(c)}</td>${td}</tr>`;
-    }).join('');
-    const known=vals.filter(v=>v!=null);
+    const cellRows=cols.map((c,i)=>`<tr><td>${testColText(c)}</td>${cells[i].html}</tr>`).join('');
+    const known=cells.map(x=>x.v).filter(v=>v!=null);
     const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
     $(sel).innerHTML=`<table class="pivot-table"><tr><th>Termin</th><th>Ergebnis</th></tr>${cellRows}
       <tr class="row-total"><td>Ø</td><td>${avg==null?'–':avg+'%'}</td></tr></table>`;
@@ -1860,10 +1877,7 @@ function renderTests(fach, sel){
   const body=students.map(p=>{
     const vals=cols.map(c=>{
       const r=rows.find(x=>x.person_id===p.id&&x.monat===c.label);
-      const v=r?Math.round(r.ergebnis):null;
-      const txt=v==null?'–':v+'%';
-      const td=edit?`<td class="cell-edit" data-test-cell data-pid="${esc(p.id)}" data-fach="${esc(fach)}" data-label="${esc(c.label)}" data-sort="${esc(c.sort)}">${txt}</td>`:`<td>${txt}</td>`;
-      return {v, html:td};
+      return testCellHtml(p,c,r,edit,fach);
     });
     const known=vals.map(x=>x.v).filter(v=>v!=null);
     const avg=known.length?Math.round(known.reduce((a,b)=>a+b,0)/known.length):null;
