@@ -1276,12 +1276,22 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     return `<div class="tt-cell tt-removed ${edit?'editable':''}" ${edit?`onclick="adoptBaseLesson('${r.id}','${planId}')" title="Neue Grundplan-Stunde in diesen Treffen-Plan übernehmen"`:''}><span class="tt-badge">entfällt</span>${lines.join('')}</div>`;
   };
   const subjectsHtml=(planRows,removedRows)=>{
-    // Faecher mit aktiver Stunde immer vor reinen Grundplan-Resten, die hier nur
-    // noch als "entfaellt" auftauchen (z.B. Arrangieren durch Formenlehre ersetzt)
-    // -- sonst stuende das ersetzte Fach vor dem tatsaechlich stattfindenden.
-    const hasActive=f=>planRows.some(r=>r.fach===f);
+    // Reihenfolge der Faecher in einem Zeitslot:
+    //  0 = Ersatzfach (nicht in der festen Fachliste oder im Treffenplan neu gegenueber
+    //      dem Grundplan) -> ganz vorne links, damit man sofort sieht, was stattdessen laeuft
+    //  1 = Fach mit tatsaechlich stattfindender Stunde
+    //  2 = Fach, dessen Stunden nur noch entfallen (Entfall im Plan oder Grundplan-Rest)
+    // Innerhalb einer Gruppe gilt die uebliche Fach-Reihenfolge.
+    const isLive=r=>!lessonCancelled(r, absentSetForLesson(planId, day, r.zeit));
+    const hasActive=f=>planRows.some(r=>r.fach===f && isLive(r));
+    const isSubstitute=f=>{
+      if(f==='Pause' || !hasActive(f)) return false;
+      if(!FACH_ORDER.includes(f)) return true;
+      return diffMode && planRows.filter(r=>r.fach===f && isLive(r)).every(r=>!baseById.get(r.source_id));
+    };
+    const rank=f=>isSubstitute(f)?0:(hasActive(f)?1:2);
     const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))]
-      .sort((a,b)=>(hasActive(a)?0:1)-(hasActive(b)?0:1) || fachIdx(a)-fachIdx(b));
+      .sort((a,b)=>rank(a)-rank(b) || fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
       const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
       const planForFach=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0));
