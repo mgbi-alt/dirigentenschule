@@ -1279,17 +1279,19 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
     // Reihenfolge der Faecher in einem Zeitslot:
     //  0 = Ersatzfach (nicht in der festen Fachliste oder im Treffenplan neu gegenueber
     //      dem Grundplan) -> ganz vorne links, damit man sofort sieht, was stattdessen laeuft
-    //  1 = Fach mit tatsaechlich stattfindender Stunde
-    //  2 = Fach, dessen Stunden nur noch entfallen (Entfall im Plan oder Grundplan-Rest)
-    // Innerhalb einer Gruppe gilt die uebliche Fach-Reihenfolge.
+    //  1 = Fach, das im Plan steht (auch mit "entfaellt" -- bleibt an seiner ueblichen Stelle)
+    //  2 = reiner Grundplan-Rest, der im Treffenplan gar nicht mehr vorkommt
+    // Innerhalb einer Gruppe gilt die uebliche Fach-Reihenfolge (FACH_ORDER).
     const isLive=r=>!lessonCancelled(r, absentSetForLesson(planId, day, r.zeit));
-    const hasActive=f=>planRows.some(r=>r.fach===f && isLive(r));
+    const inPlan=f=>planRows.some(r=>r.fach===f);
     const isSubstitute=f=>{
-      if(f==='Pause' || !hasActive(f)) return false;
+      if(f==='Pause') return false;
+      const live=planRows.filter(r=>r.fach===f && isLive(r));
+      if(!live.length) return false;
       if(!FACH_ORDER.includes(f)) return true;
-      return diffMode && planRows.filter(r=>r.fach===f && isLive(r)).every(r=>!baseById.get(r.source_id));
+      return diffMode && live.every(r=>!baseById.get(r.source_id));
     };
-    const rank=f=>isSubstitute(f)?0:(hasActive(f)?1:2);
+    const rank=f=>isSubstitute(f)?0:(inPlan(f)?1:2);
     const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))]
       .sort((a,b)=>rank(a)-rank(b) || fachIdx(a)-fachIdx(b));
     return fachs.map(f=>{
