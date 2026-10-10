@@ -76,7 +76,14 @@ function openDialog(title, bodyHtml, onSave){
   $('#dlgTitle').textContent=title;
   $('#dlgBody').innerHTML=bodyHtml;
   _dlgSave=onSave;
+  // Zustand zuruecksetzen, falls der Dialog zuvor als reine Ansicht (openInfoDialog) lief.
+  $('#dlgSave').hidden=false; $('#dlgCancel').textContent='Abbrechen';
   $('#dlg').hidden=false;
+}
+// Reine Ansicht ohne Speichern: nur "Schliessen".
+function openInfoDialog(title, bodyHtml){
+  openDialog(title, bodyHtml, null);
+  $('#dlgSave').hidden=true; $('#dlgCancel').textContent='Schließen';
 }
 function closeDialog(){ $('#dlg').hidden=true; _dlgSave=null; }
 
@@ -892,6 +899,67 @@ function calAllItems(){
   });
   return termine.concat(treffen);
 }
+// ---- Termin-Anzeige (Monatsliste + Detailansicht fuer alle Nutzer) ----
+const WD_KURZ=['So','Mo','Di','Mi','Do','Fr','Sa'];
+const hhmm=t=>t?String(t).slice(0,5):'';
+// "Sa, 10.10.2026" (lokal geparst, ohne UTC-Verschiebung)
+function fmtDayLong(ds){
+  const [y,m,d]=ds.split('-').map(Number);
+  return `${WD_KURZ[new Date(y,m-1,d).getDay()]}, ${pad2(d)}.${pad2(m)}.${y}`;
+}
+// Wann findet der Termin statt? Ein- oder mehrtaegig, mit/ohne Uhrzeit.
+function terminWhen(t){
+  const bis=(t.bis_datum&&t.bis_datum!==t.datum)?t.bis_datum:null;
+  const u1=hhmm(t.uhrzeit), u2=hhmm(t.bis_uhrzeit);
+  if(!bis){
+    const zeit=u1?(u2?`${u1}–${u2} Uhr`:`ab ${u1} Uhr`):(u2?`bis ${u2} Uhr`:(t.isTreffen?'':'ganztägig'));
+    return zeit?`${fmtDayLong(t.datum)} · ${zeit}`:fmtDayLong(t.datum);
+  }
+  return `${fmtDayLong(t.datum)}${u1?`, ${u1} Uhr`:''} – ${fmtDayLong(bis)}${u2?`, ${u2} Uhr`:''}`;
+}
+function terminCat(t){ return t.isTreffen?{label:'Treffen',color:TREFFEN_COLOR}:catFor(t.kategorie); }
+function terminDetailHtml(t){
+  const c=terminCat(t);
+  const row=(k,v)=>`<div class="td-row"><div class="td-k">${k}</div><div class="td-v">${v}</div></div>`;
+  return `<div class="td-detail">
+    <div><span class="ue-cat td-cat" style="background:${c.color}">${esc(c.label)}</span></div>
+    ${row('Wann',esc(terminWhen(t)))}
+    ${t.ort?row('Ort',esc(t.ort)):''}
+    ${t.beschreibung?row('Beschreibung',`<span class="td-desc">${esc(t.beschreibung)}</span>`):''}
+  </div>`;
+}
+// Reine Ansicht eines Termins (fuer Nutzer ohne Bearbeitungsrecht).
+function openTerminDetail(id){
+  const t=calAllItems().find(x=>x.id===id && !x.isTreffen); if(!t) return;
+  openInfoDialog(t.titel||'Termin', terminDetailHtml(t));
+}
+// Alle Termine + Treffen des angezeigten Monats als Liste unter dem Kalender.
+function renderMonthList(monthNames, mFirst, mLast, edit){
+  const el=$('#calMonthList'); if(!el) return;
+  const items=calAllItems()
+    .filter(t=>t.datum<=mLast && (t.bis_datum||t.datum)>=mFirst)
+    .sort((a,b)=>a.datum.localeCompare(b.datum) || (a.uhrzeit||'').localeCompare(b.uhrzeit||'')
+      || (a.titel||'').localeCompare(b.titel||'','de'));
+  const head=`<h3 class="section-h sm">Termine im ${monthNames[calMonth]} ${calYear}</h3>`;
+  if(!items.length){ el.innerHTML=head+'<p class="muted">Keine Termine in diesem Monat.</p>'; return; }
+  el.innerHTML=head+items.map(t=>{
+    const c=terminCat(t);
+    // Beginnt ein Termin vor dem Monat, steht er mit dem 1. des Monats in der Liste.
+    const shown=t.datum<mFirst?mFirst:t.datum;
+    const [y,m,d]=shown.split('-').map(Number);
+    const wd=WD_KURZ[new Date(y,m-1,d).getDay()];
+    const click=t.isTreffen?`goToTreffen('${t.id}')`:(edit?`openTerminDialog('${t.id}')`:'');
+    return `<div class="cal-li${click?' clickable':''}" style="--cat-color:${c.color}" ${click?`onclick="${click}"`:''}>
+      <div class="cal-li-date"><span class="d">${d}</span><span class="w">${wd}</span></div>
+      <div class="cal-li-body">
+        <div class="cal-li-title">${esc(t.titel)}<span class="ue-cat" style="background:${c.color}">${esc(c.label)}</span></div>
+        <div class="cal-li-when">${esc(terminWhen(t))}</div>
+        ${t.ort?`<div class="cal-li-meta"><b>Ort:</b> ${esc(t.ort)}</div>`:''}
+        ${t.beschreibung?`<div class="cal-li-desc">${esc(t.beschreibung)}</div>`:''}
+        ${t.isTreffen?`<div class="cal-li-meta cal-li-link">Zum Stundenplan →</div>`:''}
+      </div></div>`;
+  }).join('');
+}
 function renderKalender(){
   initCalState();
   const edit=canEdit('kalender');
@@ -945,6 +1013,8 @@ function renderKalender(){
       <div class="cal-daynum">${dn}</div>${holHtml}${ferHtml}${evtHtml}</div>`;
   }
   $('#calGrid').innerHTML=html;
+  renderMonthList(monthNames, `${calYear}-${pad2(calMonth+1)}-01`,
+    `${calYear}-${pad2(calMonth+1)}-${pad2(daysInMonth)}`, edit);
   renderCalSubscribeBox();
 }
 // ---------- Kalenderabo (ICS-Feed fuer Google/Apple Kalender) ----------
@@ -1000,7 +1070,9 @@ function selectTermKat(btn){
 }
 let _tmEditId=null;
 function openTerminDialog(id, prefillDate){
-  const edit=canEdit('kalender'); if(!edit) return;
+  const edit=canEdit('kalender');
+  // Ohne Bearbeitungsrecht: Termin nur anzeigen statt stillschweigend nichts zu tun.
+  if(!edit){ if(id) openTerminDetail(id); return; }
   const t=id?cache.termine.find(x=>x.id===id):null;
   _tmEditId=t?t.id:null;
   const kat=t?.kategorie||'sonstiges';

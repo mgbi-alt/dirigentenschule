@@ -427,6 +427,27 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
 .cal-subscribe-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .cal-subscribe-row input{flex:1;min-width:180px;background:var(--bg2);border:1px solid var(--border);
   border-radius:var(--r);padding:7px 10px;font-size:12.5px;color:var(--text)}
+/* Terminliste unter dem Kalender + Detailansicht */
+.cal-list{margin-top:18px}
+.cal-li{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);
+  border-left:3px solid var(--cat-color,var(--accent));border-radius:var(--r);padding:10px 14px;margin-bottom:8px}
+.cal-li.clickable{cursor:pointer}
+.cal-li.clickable:hover{border-color:var(--accent);border-left-color:var(--cat-color,var(--accent))}
+.cal-li-date{flex:0 0 40px;text-align:center;line-height:1.1;color:var(--accent2)}
+.cal-li-date .d{display:block;font-size:22px;font-weight:700}
+.cal-li-date .w{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-top:2px}
+.cal-li-body{flex:1;min-width:0}
+.cal-li-title{font-weight:600;overflow-wrap:anywhere}
+.cal-li-when{color:var(--text2);font-size:13px;margin-top:2px}
+.cal-li-meta{font-size:13px;margin-top:4px;color:var(--text)}
+.cal-li-link{color:var(--accent);font-weight:600}
+.cal-li-desc{font-size:13.5px;margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere}
+.td-detail{display:flex;flex-direction:column;gap:10px}
+.td-cat{margin-left:0}
+.td-row{display:flex;flex-direction:column;gap:2px}
+.td-k{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.td-v{font-size:14.5px;overflow-wrap:anywhere}
+.td-desc{white-space:pre-wrap}
 .cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12.5px;color:var(--text2)}
 .cal-legend span{display:inline-flex;align-items:center;gap:5px}
 .cal-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
