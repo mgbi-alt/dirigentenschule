@@ -35,7 +35,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{}, termine:[] };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{}, termine:[], chorpraxis:[], chorpraxisErr:null };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -238,6 +238,7 @@ function applyRoleFlags(){
   $('#calAddBtn').hidden = !canEdit('kalender');
   $('#ttTimesBtn').hidden = !isAdmin;   // „Zeiten" nur für Admin
   $$('.xls-export-btn').forEach(b=>b.hidden=!isStaff);   // Excel-Export nicht fuer Schueler
+  $('#cpOpenBtn').hidden = !chorpraxisVisible();          // Chorpraxis-Planung: Lehrer/Admin
   // Lehrer/Schüler standardmäßig „Mein Plan", Admin „Gesamtplan"
   const tv=$('#ttView'); if(tv) tv.value = isAdmin ? 'all' : 'mine';
 }
@@ -337,7 +338,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols,termine] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols,termine,chorpraxis] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('sort').order('datum'),
@@ -353,6 +354,7 @@ async function loadAll(){
     SB.from('absences').select('*'),
     SB.from('test_columns').select('*').order('sort'),
     SB.from('termine').select('*').order('datum'),
+    SB.from('chorpraxis_plans').select('*'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
@@ -360,6 +362,8 @@ async function loadAll(){
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
   cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[]; cache.testCols=testCols.data||[];
   cache.termine=termine.data||[];
+  // Tabelle kommt mit Migration v29; bis dahin Fehler merken statt die App zu stoeren.
+  cache.chorpraxis=chorpraxis.data||[]; cache.chorpraxisErr=chorpraxis.error?chorpraxis.error.message:null;
   cache.lastLogins = {};
   if(isAdmin){
     const { data:ll } = await SB.rpc('admin_last_logins');
@@ -378,7 +382,53 @@ function showPage(name){
 function renderActivePage(){
   const active = $('.page.active')?.id.replace('page-','');
   ({start:renderStart, ha:renderHA, info:renderInfoTab, kalender:renderKalender, stundenplan:renderStundenplan,
-    kontakte:renderContacts, bewertung:renderBewertung, admin:renderAdmin}[active]||(()=>{}))();
+    kontakte:renderContacts, bewertung:renderBewertung, admin:renderAdmin, chorpraxis:renderChorpraxis}[active]||(()=>{}))();
+}
+
+// ---------- CHORPRAXIS-PLANUNG ----------
+// Je Treffen eine Planung (Rich-Text), gepflegt von den fuer Chorpraxis verantwortlichen
+// Lehrern (Recht "chorpraxis"), lesbar fuer Admins/Lehrer/Klassenleitung.
+function chorpraxisVisible(){ return isStaff || canEdit('chorpraxis'); }
+function renderChorpraxis(){
+  const el=$('#cpList'), hint=$('#cpHint'); if(!el) return;
+  if(!chorpraxisVisible()){
+    hint.textContent=''; el.innerHTML='<p class="muted">Dieser Bereich ist nur für Lehrer und Admins sichtbar.</p>'; return;
+  }
+  const edit=canEdit('chorpraxis');
+  hint.textContent = edit
+    ? 'Hier hinterlegen die verantwortlichen Lehrer die Planung für Chorpraxis je Treffen.'
+    : 'Planung für Chorpraxis je Treffen (nur lesen – Bearbeiten ist den verantwortlichen Lehrern vorbehalten).';
+  if(cache.chorpraxisErr){
+    el.innerHTML=`<p class="muted">Die Planung kann noch nicht geladen werden (${esc(cache.chorpraxisErr)}).${isAdmin?' Bitte die Datenbank-Migration v29 im Supabase SQL-Editor ausführen.':''}</p>`;
+    return;
+  }
+  const treffen=cache.plans.filter(p=>!p.is_base);
+  if(!treffen.length){ el.innerHTML='<p class="muted">Noch keine Treffen angelegt.</p>'; return; }
+  const today=dateISO(new Date());
+  const byAsc=(a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999')||((a.sort||0)-(b.sort||0));
+  const upcoming=treffen.filter(p=>!p.datum||p.datum>=today).sort(byAsc);
+  const past=treffen.filter(p=>p.datum&&p.datum<today).sort((a,b)=>byAsc(b,a));
+  const rowFor=t=>cache.chorpraxis.find(r=>r.plan_id===t.id);
+  const titleOf=t=>defaultInfoTitle(t)||t.name||'Treffen';
+  const itemHtml=t=>{
+    const r=rowFor(t);
+    const has=!!(r && (r.text||'').replace(/<[^>]*>|&nbsp;/g,'').trim());
+    const who=r&&r.updated_by?personById(r.updated_by):null;
+    const meta=r&&r.updated_at?`Zuletzt bearbeitet${who?' von '+esc(fullName(who)):''} am ${fmtDate(r.updated_at)}`:'';
+    return `<div class="ann-item">
+      <h4>${esc(titleOf(t))}</h4>
+      ${has?`<div class="ann-body">${sanitizeHtml(r.text)}</div>`:'<p class="muted">Noch keine Planung eingetragen.</p>'}
+      ${meta?`<div class="muted cp-meta">${meta}</div>`:''}
+      ${edit?`<div class="ann-actions"><button class="btn-ghost" onclick="openChorpraxisEditor('${t.id}')">${has?'Bearbeiten':'Planung eintragen'}</button></div>`:''}
+    </div>`;
+  };
+  const groupHtml=(title,items)=>{
+    if(!items.length) return '';
+    const inner=items.map(t=>`<details class="past-termine"><summary>${esc(titleOf(t))}</summary>${itemHtml(t)}</details>`).join('');
+    return `<details class="info-group"><summary><span class="chev">›</span><span class="ig-title">${esc(title)}</span><span class="count">${items.length}</span></summary><div class="info-group-body">${inner}</div></details>`;
+  };
+  const next=upcoming[0];
+  el.innerHTML=(next?itemHtml(next):'')+groupHtml('Weitere kommende Treffen',upcoming.slice(1))+groupHtml('Vergangene Treffen',past);
 }
 
 // ---------- START ----------
@@ -2292,6 +2342,35 @@ function addPersonDialog(){
 }
 // ---------- INFOS (Rich-Text-Editor) ----------
 let _annEditId=null, _savedRange=null;
+// Der Editor dient zwei Zwecken: 'info' (Startseiten-Infos) und 'chorpraxis'
+// (Planung je Treffen, ohne Titel/Treffen-Auswahl).
+let _annMode='info', _cpPlanId=null;
+function setAnnMode(mode){
+  _annMode=mode;
+  const info=mode==='info';
+  $('#annT').style.display=info?'':'none';
+  $('#annTreffenWrap').style.display=info?'':'none';
+}
+function openChorpraxisEditor(planId){
+  const plan=cache.plans.find(p=>p.id===planId); if(!plan) return;
+  if(!canEdit('chorpraxis')){ toast('Keine Berechtigung','err'); return; }
+  _annEditId=null; _savedRange=null; _cpPlanId=planId;
+  setAnnMode('chorpraxis');
+  const r=cache.chorpraxis.find(x=>x.plan_id===planId);
+  $('#annModalTitle').textContent='Chorpraxis-Planung · '+(defaultInfoTitle(plan)||plan.name||'Treffen');
+  $('#annEditor').innerHTML=r?sanitizeHtml(r.text||''):'';
+  $('#annErr').textContent='';
+  $('#annModal').hidden=false;
+}
+async function saveChorpraxis(){
+  const text=$('#annEditor').innerHTML;
+  // updated_by/updated_at setzt die Datenbank (Trigger), damit sie nicht manipulierbar sind.
+  const {data,error}=await SB.from('chorpraxis_plans').upsert({plan_id:_cpPlanId,text},{onConflict:'plan_id'}).select().single();
+  if(error){ $('#annErr').textContent=error.message; return; }
+  const i=cache.chorpraxis.findIndex(r=>r.plan_id===_cpPlanId);
+  if(i>=0) cache.chorpraxis[i]=data; else cache.chorpraxis.push(data);
+  closeAnnEditor(); renderChorpraxis(); toast('Planung gespeichert');
+}
 function saveSel(){ const s=window.getSelection(); if(s.rangeCount && $('#annEditor').contains(s.anchorNode)) _savedRange=s.getRangeAt(0); }
 function restoreSel(){ const ed=$('#annEditor'); ed.focus(); if(_savedRange){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(_savedRange); } }
 function rteCmd(cmd,val){ restoreSel(); document.execCommand(cmd,false,val||null); saveSel(); }
@@ -2312,6 +2391,7 @@ function annTreffenChanged(){
   if(plan && !$('#annT').value.trim()) $('#annT').value=defaultInfoTitle(plan);
 }
 function openAnnEditor(id){
+  setAnnMode('info');
   _annEditId=id||null; _savedRange=null;
   const a=id?cache.ann.find(x=>x.id===id):null;
   $('#annModalTitle').textContent = id?'Info bearbeiten':'Neue Info';
@@ -2324,6 +2404,7 @@ function openAnnEditor(id){
 }
 function closeAnnEditor(){ $('#annModal').hidden=true; _annEditId=null; }
 async function saveAnn(){
+  if(_annMode==='chorpraxis') return saveChorpraxis();
   const titel=$('#annT').value.trim();
   if(!titel){ $('#annErr').textContent='Titel fehlt'; return; }
   const text=$('#annEditor').innerHTML;
@@ -2412,6 +2493,8 @@ function bind(){
   $('#dlgSave').onclick=async()=>{ if(_dlgSave){ const r=await _dlgSave(); if(r!==false) closeDialog(); } else closeDialog(); };
 
   // Info-Rich-Editor
+  $('#cpOpenBtn').onclick=()=>showPage('chorpraxis');
+  $('#cpBackBtn').onclick=()=>showPage('start');
   $('#annNewBtn').onclick=()=>openAnnEditor();
   $('#absNewBtn').onclick=addAbsenceDialog;
   $('#annCancel').onclick=closeAnnEditor;

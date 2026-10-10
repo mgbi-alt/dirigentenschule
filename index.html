@@ -87,6 +87,7 @@
         <div class="toolbar">
           <h2 class="section-h">Aktuelle Infos</h2>
           <div class="filters">
+            <button class="btn-ghost" id="cpOpenBtn" hidden>Chorpraxis-Planung</button>
             <button class="btn-primary" id="annNewBtn" hidden>+ Info hinzufügen</button>
             <button class="btn-primary" id="absNewBtn" hidden>+ Abmeldung hinzufügen</button>
           </div>
@@ -101,6 +102,18 @@
         <div id="onlineUsers" class="online-users"></div>
       </div>
     </div>
+  </section>
+
+  <!-- ========== CHORPRAXIS-PLANUNG ========== -->
+  <section class="page" id="page-chorpraxis">
+    <div class="toolbar">
+      <h2 class="section-h">Chorpraxis – Planung je Treffen</h2>
+      <div class="filters">
+        <button class="btn-ghost" id="cpBackBtn">‹ Zurück zu den Infos</button>
+      </div>
+    </div>
+    <p class="muted" id="cpHint"></p>
+    <div id="cpList" class="ann-list"></div>
   </section>
 
   <!-- ========== KALENDER ========== -->
@@ -329,7 +342,7 @@
   <div class="modal-box wide">
     <h3 id="annModalTitle">Info</h3>
     <input type="text" id="annT" placeholder="Titel">
-    <label class="ann-treffen">Treffen (optional):
+    <label class="ann-treffen" id="annTreffenWrap">Treffen (optional):
       <select id="annTreffen"></select>
       <button type="button" class="btn-ghost mini" id="annNewTreffen">+ neues Treffen</button>
     </label>

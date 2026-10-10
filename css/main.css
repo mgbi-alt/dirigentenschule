@@ -132,6 +132,7 @@ em{color:var(--text2);font-style:normal}
 .past-termine{margin-top:10px}
 .past-termine>summary{cursor:pointer;color:var(--text2);font-size:13px;padding:6px 0;list-style:revert}
 .past-termine[open]>summary{color:var(--accent2)}
+.cp-meta{font-size:12px;margin-top:8px}
 .ann-treffen{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin:6px 0}
 .ann-treffen select{flex:1}
 /* Zusammengeklappte Info-Gruppen (Startseite): Zukuenftige / Veraltete Infos */
@@ -386,7 +387,7 @@ select,input[type=text],input[type=email],input[type=password],input[type=date],
   #appMain{padding:10px 10px 50px}
   .section-h{margin:12px 0 8px}
   /* Aktionen auf der Startseite auf dem Handy etwas kompakter. */
-  #annNewBtn,#absNewBtn{font-size:13px;padding:7px 12px}
+  #annNewBtn,#absNewBtn,#cpOpenBtn{font-size:13px;padding:7px 12px}
   /* Kopfzeile: rechter Block darf umbrechen + schrumpfen, damit "Passwort
      aendern"/"Abmelden" bei 360px Breite nicht ueber den rechten Rand rutschen. */
   #appHeader{gap:10px;padding:10px 12px}

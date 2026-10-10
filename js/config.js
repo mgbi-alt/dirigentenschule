@@ -30,6 +30,7 @@ const EDIT_AREAS = [
   { key: 'stundenplan', label: 'Stundenplan' },
   { key: 'abmeldungen', label: 'Abmeldungen' },
   { key: 'kalender',    label: 'Kalender' },
+  { key: 'chorpraxis',  label: 'Chorpraxis-Planung' },
 ];
 
 // Kalender-Kategorien (Termine): key -> Label/Farbe
