@@ -362,7 +362,7 @@ async function loadAll(){
   cache.tt=tt.data||[]; cache.plans=plans.data||[]; cache.gradeCols=gradeCols.data||[]; cache.rooms=rooms.data||[];
   cache.timeSlots=timeSlots.data||[]; cache.absences=absences.data||[]; cache.testCols=testCols.data||[];
   cache.termine=termine.data||[];
-  // Tabelle kommt mit Migration v29; bis dahin Fehler merken statt die App zu stoeren.
+  // Tabelle kommt mit Migration v30; bis dahin Fehler merken statt die App zu stoeren.
   cache.chorpraxis=chorpraxis.data||[]; cache.chorpraxisErr=chorpraxis.error?chorpraxis.error.message:null;
   cache.lastLogins = {};
   if(isAdmin){
@@ -399,7 +399,7 @@ function renderChorpraxis(){
     ? 'Hier hinterlegen die verantwortlichen Lehrer die Planung für Chorpraxis je Treffen.'
     : 'Planung für Chorpraxis je Treffen (nur lesen – Bearbeiten ist den verantwortlichen Lehrern vorbehalten).';
   if(cache.chorpraxisErr){
-    el.innerHTML=`<p class="muted">Die Planung kann noch nicht geladen werden (${esc(cache.chorpraxisErr)}).${isAdmin?' Bitte die Datenbank-Migration v29 im Supabase SQL-Editor ausführen.':''}</p>`;
+    el.innerHTML=`<p class="muted">Die Planung kann noch nicht geladen werden (${esc(cache.chorpraxisErr)}).${isAdmin?' Bitte die Datenbank-Migration v30 im Supabase SQL-Editor ausführen.':''}</p>`;
     return;
   }
   const treffen=cache.plans.filter(p=>!p.is_base);
