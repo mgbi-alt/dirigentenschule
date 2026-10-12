@@ -1,5 +1,5 @@
 // Service Worker – Dirigentenschule (App-Shell-Cache, network-first)
-const CACHE = 'dirschule-v22';
+const CACHE = 'dirschule-v23';
 const ASSETS = ['./','./index.html','./css/main.css','./js/config.js','./js/app.js','./manifest.json'];
 
 self.addEventListener('install', e=>{
@@ -14,8 +14,11 @@ self.addEventListener('fetch', e=>{
   if(req.url.includes('supabase')||req.method!=='GET') return;
   // Network-first: immer die neueste Version laden, Cache nur als Offline-Fallback.
   // (Cache-first verhinderte frueher, dass Aenderungen bei Nutzern ankamen.)
+  // cache:'no-cache' = beim Server per ETag nachfragen. Ohne das darf der Browser die Datei
+  // wegen "Cache-Control: max-age=600" von GitHub Pages bis zu 10 Min. aus seinem eigenen
+  // HTTP-Cache liefern, und neue Versionen kaemen verzoegert an (kostet nur ein 304).
   e.respondWith(
-    fetch(req).then(res=>{
+    fetch(req, {cache:'no-cache'}).then(res=>{
       const copy=res.clone();
       caches.open(CACHE).then(c=>c.put(req,copy)).catch(()=>{});
       return res;
