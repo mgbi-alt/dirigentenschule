@@ -1161,9 +1161,19 @@ function calShift(delta){
 function calToday(){ const now=new Date(); calYear=now.getFullYear(); calMonth=now.getMonth(); renderKalender(); }
 function catFor(key){ return CAL_KATEGORIEN.find(c=>c.key===key)||CAL_KATEGORIEN[CAL_KATEGORIEN.length-1]; }
 const TREFFEN_COLOR='#4c7a8c';
-// Termine (editierbar) + Treffen aus der Stundenplan-Verwaltung (nur lesend, eigenes Datum) zusammengeführt.
+const ABGABE_COLOR='#b9790f';
+// Termine (editierbar) + Treffen aus der Stundenplan-Verwaltung + Abgabetermine der
+// Pruefungen zu Hause (beide nur lesend, abgeleitet) zusammengefuehrt.
 function calAllItems(){
-  const termine=cache.termine.map(t=>({...t, isTreffen:false}));
+  const termine=cache.termine.map(t=>({...t, isTreffen:false, isAbgabe:false}));
+  // Abgabetermine werden aus den Hauspruefungen abgeleitet statt doppelt gepflegt:
+  // aendert sich die Pruefung, stimmt der Kalender automatisch.
+  const abgaben=(cache.homeExams||[]).filter(e=>e.abgabe_bis).map(e=>{
+    let info=`Bearbeitungszeit: ${fmtIso(e.bearbeitung_von)} – ${fmtIso(e.abgabe_bis)}`;
+    if(abgabeIsStudent()) info+=abgabeFor(e.id,currentPerson.id)?'\nDu hast bereits abgegeben.':'\nDu hast noch nichts abgegeben.';
+    return { id:'abgabe-'+e.id, titel:`Abgabe: ${e.titel}`, datum:e.abgabe_bis, bis_datum:null,
+      uhrzeit:null, ort:null, beschreibung:info, kategorie:'abgabe', isTreffen:false, isAbgabe:true };
+  });
   const toISO=dateISO;
   // plan.datum ist bei "fr_sa" das Samstags-Datum, der Freitag ergibt sich als Datum-1
   // (siehe treffenDateLabel). Bei "nur Freitag"/"nur Samstag" ist das Datum bereits der
@@ -1181,7 +1191,7 @@ function calAllItems(){
       uhrzeit:null, ort:null, kategorie:'treffen', isTreffen:true,
     };
   });
-  return termine.concat(treffen);
+  return termine.concat(treffen, abgaben);
 }
 // ---- Termin-Anzeige (Monatsliste + Detailansicht fuer alle Nutzer) ----
 const WD_KURZ=['So','Mo','Di','Mi','Do','Fr','Sa'];
@@ -1196,12 +1206,16 @@ function terminWhen(t){
   const bis=(t.bis_datum&&t.bis_datum!==t.datum)?t.bis_datum:null;
   const u1=hhmm(t.uhrzeit), u2=hhmm(t.bis_uhrzeit);
   if(!bis){
-    const zeit=u1?(u2?`${u1}–${u2} Uhr`:`ab ${u1} Uhr`):(u2?`bis ${u2} Uhr`:(t.isTreffen?'':'ganztägig'));
+    const zeit=u1?(u2?`${u1}–${u2} Uhr`:`ab ${u1} Uhr`):(u2?`bis ${u2} Uhr`:((t.isTreffen||t.isAbgabe)?'':'ganztägig'));
     return zeit?`${fmtDayLong(t.datum)} · ${zeit}`:fmtDayLong(t.datum);
   }
   return `${fmtDayLong(t.datum)}${u1?`, ${u1} Uhr`:''} – ${fmtDayLong(bis)}${u2?`, ${u2} Uhr`:''}`;
 }
-function terminCat(t){ return t.isTreffen?{label:'Treffen',color:TREFFEN_COLOR}:catFor(t.kategorie); }
+function terminCat(t){
+  if(t.isTreffen) return {label:'Treffen',color:TREFFEN_COLOR};
+  if(t.isAbgabe) return {label:'Abgabe',color:ABGABE_COLOR};
+  return catFor(t.kategorie);
+}
 function terminDetailHtml(t){
   const c=terminCat(t);
   const row=(k,v)=>`<div class="td-row"><div class="td-k">${k}</div><div class="td-v">${v}</div></div>`;
@@ -1232,7 +1246,7 @@ function renderMonthList(monthNames, mFirst, mLast, edit){
     const shown=t.datum<mFirst?mFirst:t.datum;
     const [y,m,d]=shown.split('-').map(Number);
     const wd=WD_KURZ[new Date(y,m-1,d).getDay()];
-    const click=t.isTreffen?`goToTreffen('${t.id}')`:(edit?`openTerminDialog('${t.id}')`:'');
+    const click=t.isTreffen?`goToTreffen('${t.id}')`:t.isAbgabe?`goToAbgaben()`:(edit?`openTerminDialog('${t.id}')`:'');
     return `<div class="cal-li${click?' clickable':''}" style="--cat-color:${c.color}" ${click?`onclick="${click}"`:''}>
       <div class="cal-li-date"><span class="d">${d}</span><span class="w">${wd}</span></div>
       <div class="cal-li-body">
@@ -1241,6 +1255,7 @@ function renderMonthList(monthNames, mFirst, mLast, edit){
         ${t.ort?`<div class="cal-li-meta"><b>Ort:</b> ${esc(t.ort)}</div>`:''}
         ${t.beschreibung?`<div class="cal-li-desc">${esc(t.beschreibung)}</div>`:''}
         ${t.isTreffen?`<div class="cal-li-meta cal-li-link">Zum Stundenplan →</div>`:''}
+        ${t.isAbgabe?`<div class="cal-li-meta cal-li-link">Zur Prüfung →</div>`:''}
       </div></div>`;
   }).join('');
 }
@@ -1252,6 +1267,7 @@ function renderKalender(){
   $('#calTitle').textContent=`Kalender – ${monthNames[calMonth]} ${calYear}`;
   $('#calLegend').innerHTML=CAL_KATEGORIEN.map(c=>`<span><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span>`).join('')
     +`<span><span class="dot" style="background:${TREFFEN_COLOR}"></span>Treffen</span>`
+    +`<span><span class="dot" style="background:${ABGABE_COLOR}"></span>Abgabe</span>`
     +`<span><span class="dot" style="background:#c04b4b"></span>Feiertag (NRW)</span>`
     +`<span><span class="dot" style="background:#8fb3d9"></span>Schulferien (NRW)</span>`;
 
@@ -1288,8 +1304,10 @@ function renderKalender(){
     const ferName=schoolDays[ds];
     const evts=(byDate[ds]||[]).slice().sort((a,b)=>(a.uhrzeit||'').localeCompare(b.uhrzeit||''));
     const evtHtml=evts.map(t=>{
-      const color=t.isTreffen?TREFFEN_COLOR:catFor(t.kategorie).color;
-      const click=t.isTreffen?`event.stopPropagation();goToTreffen('${t.id}')`:`event.stopPropagation();openTerminDialog('${t.id}')`;
+      const color=terminCat(t).color;
+      const click=t.isTreffen?`event.stopPropagation();goToTreffen('${t.id}')`
+        :t.isAbgabe?`event.stopPropagation();goToAbgaben()`
+        :`event.stopPropagation();openTerminDialog('${t.id}')`;
       return `<div class="cal-evt" style="background:${color}" title="${esc(t.titel)}" onclick="${click}">${esc(t.titel)}</div>`; }).join('');
     const holHtml=holName?`<div class="cal-holiday" title="${esc(holName)}">${esc(holName)}</div>`:'';
     const ferHtml=(!holName&&ferName)?`<div class="cal-ferien" title="${esc(ferName)}">${esc(ferName)}</div>`:'';
@@ -1422,8 +1440,9 @@ function renderUpcomingEvents(){
   const monthNamesShort=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
   el.innerHTML=upcoming.map(t=>{
     const d=new Date(t.datum+'T00:00:00');
-    const color=t.isTreffen?TREFFEN_COLOR:catFor(t.kategorie).color;
-    const catLabel=t.isTreffen?'Treffen':catFor(t.kategorie).label;
+    const cat=terminCat(t);
+    const color=cat.color;
+    const catLabel=cat.label;
     const zeitraum=t.bis_datum&&t.bis_datum!==t.datum?`${fmtDate(t.datum)}–${fmtDate(t.bis_datum)}`:fmtDate(t.datum);
     const zeit=t.uhrzeit?` · ${t.uhrzeit.slice(0,5)} Uhr`:'';
     const ort=t.ort?` · ${esc(t.ort)}`:'';
