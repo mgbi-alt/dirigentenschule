@@ -35,7 +35,7 @@ function visibleStudents(){
   if(hasRole(currentPerson,'schueler')) return students().filter(p=>p.id===currentPerson.id);
   return students();
 }
-const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{}, termine:[], chorpraxis:[], chorpraxisErr:null };
+const cache = { people:[], ann:[], practice:[], meetings:[], tasks:[], status:[], tests:[], grades:[], docs:[], tt:[], plans:[], gradeCols:[], rooms:[], timeSlots:[], absences:[], testCols:[], lastLogins:{}, termine:[], chorpraxis:[], chorpraxisErr:null, homeExams:[], homeUploads:[], homeExamErr:null };
 
 // ---------- Utils ----------
 const $  = (s,r=document)=>r.querySelector(s);
@@ -338,7 +338,7 @@ async function loadAll(){
   cache.ann  = (await SB.from('announcements').select('*').order('datum',{ascending:false})).data||[];
   cache.docs = (await SB.from('site_docs').select('*')).data||[];
   if(!session){ cache.people=[]; return; }
-  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols,termine,chorpraxis] = await Promise.all([
+  const [people,practice,meetings,tasks,status,tests,grades,tt,plans,gradeCols,rooms,timeSlots,absences,testCols,termine,chorpraxis,homeExams,homeUploads] = await Promise.all([
     SB.from('people').select('*').order('sort'),
     SB.from('practice_times').select('*'),
     SB.from('theory_meetings').select('*').order('sort').order('datum'),
@@ -355,6 +355,8 @@ async function loadAll(){
     SB.from('test_columns').select('*').order('sort'),
     SB.from('termine').select('*').order('datum'),
     SB.from('chorpraxis_plans').select('*'),
+    SB.from('home_exams').select('*').order('abgabe_bis'),
+    SB.from('home_exam_uploads').select('*'),
   ]);
   cache.people=people.data||[]; cache.practice=practice.data||[];
   cache.meetings=meetings.data||[]; cache.tasks=tasks.data||[];
@@ -364,6 +366,9 @@ async function loadAll(){
   cache.termine=termine.data||[];
   // Tabelle kommt mit Migration v30; bis dahin Fehler merken statt die App zu stoeren.
   cache.chorpraxis=chorpraxis.data||[]; cache.chorpraxisErr=chorpraxis.error?chorpraxis.error.message:null;
+  // Hausprüfungen: Tabellen kommen mit Migration v31.
+  cache.homeExams=homeExams.data||[]; cache.homeUploads=homeUploads.data||[];
+  cache.homeExamErr=(homeExams.error||homeUploads.error)?(homeExams.error||homeUploads.error).message:null;
   cache.lastLogins = {};
   if(isAdmin){
     const { data:ll } = await SB.rpc('admin_last_logins');
@@ -431,6 +436,195 @@ function renderChorpraxis(){
   el.innerHTML=(next?itemHtml(next):'')+groupHtml('Weitere kommende Treffen',upcoming.slice(1))+groupHtml('Vergangene Treffen',past);
 }
 
+// ---------- HAUSPRÜFUNGEN (Abgabe als PDF) ----------
+// Eine Pruefung hat Bearbeitungszeit (bearbeitung_von) und Abgabetermin (abgabe_bis).
+// Schueler laden je Pruefung ein PDF in den privaten Bucket "abgaben" hoch.
+const ABGABE_MAX_MB=10;
+const todayISO=()=>dateISO(new Date());
+const fmtIso=ds=>{ const [y,m,d]=ds.split('-'); return `${+d}.${+m}.${y}`; };
+function daysBetween(fromIso,toIso){
+  const [y1,m1,d1]=fromIso.split('-').map(Number), [y2,m2,d2]=toIso.split('-').map(Number);
+  return Math.round((Date.UTC(y2,m2-1,d2)-Date.UTC(y1,m1-1,d1))/86400000);
+}
+const abgabeIsStudent=()=>!!currentPerson && hasRole(currentPerson,'schueler') && !isStaff;
+const abgabeFor=(examId,personId)=>cache.homeUploads.find(u=>u.exam_id===examId&&u.person_id===personId)||null;
+// Status einer Pruefung fuer eine Person: upcoming | open | overdue | done
+function abgabeState(exam, personId){
+  const up=abgabeFor(exam.id, personId), t=todayISO();
+  if(up) return { key:'done', up, late: dateISO(new Date(up.uploaded_at)) > exam.abgabe_bis };
+  if(t<exam.bearbeitung_von) return { key:'upcoming' };
+  if(t>exam.abgabe_bis) return { key:'overdue' };
+  return { key:'open' };
+}
+const restTage=n=>n<=0?'heute ist der letzte Tag':n===1?'noch 1 Tag':`noch ${n} Tage`;
+function goToAbgaben(){
+  showPage('bewertung');
+  const b=document.querySelector('#page-bewertung .sub-btn[data-sub="pruefungen"]');
+  if(b) b.click();
+}
+// Hinweise auf der Startseite: Schueler sehen ihre offenen/ueberfaelligen Abgaben,
+// Lehrer/Admins sehen, wie viele Schueler noch fehlen.
+function renderAbgabenStart(){
+  const box=$('#abgabenBox'); if(!box) return;
+  if(!currentPerson || cache.homeExamErr || !cache.homeExams.length){ box.innerHTML=''; return; }
+  const t=todayISO();
+  const exams=cache.homeExams.slice().sort((a,b)=>a.abgabe_bis.localeCompare(b.abgabe_bis));
+  const item=(cls,ex,text)=>`<div class="abgabe-item ${cls}" onclick="goToAbgaben()" role="button" tabindex="0">
+      <div class="abgabe-title">${esc(ex.titel)}</div><div class="abgabe-text">${text}</div></div>`;
+  let items=[];
+  if(abgabeIsStudent()){
+    items=exams.map(ex=>{
+      const st=abgabeState(ex, currentPerson.id);
+      if(st.key==='upcoming') return '';
+      if(st.key==='overdue') return item('overdue',ex,`Überfällig: Abgabe war bis ${fmtIso(ex.abgabe_bis)}. Es wurde noch kein PDF hochgeladen.`);
+      if(st.key==='done') return t>ex.abgabe_bis ? '' :
+        item('ok',ex,`Eingereicht${st.late?' (verspätet)':''} – danke!`);
+      return item('open',ex,`Bitte bis ${fmtIso(ex.abgabe_bis)} als PDF einreichen (${restTage(daysBetween(t,ex.abgabe_bis))}).`);
+    });
+  }else if(isStaff){
+    const stu=students();
+    items=exams.map(ex=>{
+      if(t<ex.bearbeitung_von || !stu.length) return '';
+      const done=stu.filter(p=>abgabeFor(ex.id,p.id)).length, miss=stu.length-done;
+      if(t>ex.abgabe_bis) return miss>0
+        ? item('overdue',ex,`Abgabe war bis ${fmtIso(ex.abgabe_bis)}: ${miss} von ${stu.length} Schülern haben noch nichts eingereicht.`)
+        : '';
+      return item('open',ex,`Abgabe bis ${fmtIso(ex.abgabe_bis)}: ${done} von ${stu.length} eingereicht.`);
+    });
+  }
+  items=items.filter(Boolean);
+  box.innerHTML=items.length
+    ? `<div class="abgaben-box"><h2 class="section-h">Prüfungen zu Hause</h2>${items.join('')}</div>` : '';
+}
+// Bereich auf "Bewertungen > Prüfungen & Tests"
+function renderAbgaben(){
+  const el=$('#abgabenSection'); if(!el) return;
+  const edit=canEdit('pruefungen');
+  const head=`<div class="toolbar"><h3 class="section-h sm">Prüfungen zu Hause (Abgabe als PDF)</h3>
+    ${edit?`<div class="filters"><button class="btn-primary" onclick="openAbgabeExamDialog()">+ Prüfung anlegen</button></div>`:''}</div>`;
+  if(cache.homeExamErr){
+    el.innerHTML=head+`<p class="muted">Die Prüfungen zu Hause können noch nicht geladen werden (${esc(cache.homeExamErr)}).${isAdmin?' Bitte die Datenbank-Migration v31 im Supabase SQL-Editor ausführen.':''}</p>`;
+    return;
+  }
+  const t=todayISO();
+  const exams=cache.homeExams.slice().sort((a,b)=>{
+    const ao=a.abgabe_bis>=t, bo=b.abgabe_bis>=t;
+    if(ao!==bo) return ao?-1:1;
+    return ao?a.abgabe_bis.localeCompare(b.abgabe_bis):b.abgabe_bis.localeCompare(a.abgabe_bis);
+  });
+  if(!exams.length){ el.innerHTML=head+'<p class="muted">Zurzeit gibt es keine Prüfungen zum Abgeben.</p>'; return; }
+  el.innerHTML=head+exams.map(ex=>abgabeCardHtml(ex,edit)).join('');
+}
+function abgabeUploadBtn(ex,label){
+  return `<label class="btn-primary abg-btn">${label}<input type="file" accept="application/pdf,.pdf" hidden
+    onchange="uploadAbgabe('${ex.id}', this.files[0]); this.value=''"></label>`;
+}
+function abgabeCardHtml(ex, edit){
+  const t=todayISO();
+  const period=`Bearbeitungszeit ${fmtIso(ex.bearbeitung_von)} – ${fmtIso(ex.abgabe_bis)}`;
+  const adminBtns=edit?`<div class="ann-actions">
+      <button class="btn-ghost" onclick="openAbgabeExamDialog('${ex.id}')">Bearbeiten</button>
+      <button class="btn-ghost" onclick="deleteAbgabeExam('${ex.id}')">Löschen</button></div>`:'';
+  const desc=ex.beschreibung?`<div class="ann-body abg-desc">${esc(ex.beschreibung)}</div>`:'';
+  let body='';
+  if(abgabeIsStudent()){
+    const st=abgabeState(ex, currentPerson.id);
+    if(st.key==='upcoming'){
+      body=`<span class="abg-chip">Beginnt am ${fmtIso(ex.bearbeitung_von)}</span>`;
+    }else if(st.key==='done'){
+      const when=new Date(st.up.uploaded_at).toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short'});
+      body=`<span class="abg-chip ok">Eingereicht${st.late?' (verspätet)':''}</span>
+        <div class="abg-info">${esc(st.up.filename||'PDF')} · ${esc(when)} ·
+          <a href="#" onclick="openAbgabePdf('${esc(st.up.file_path)}');return false">PDF ansehen</a></div>
+        <div class="abg-actions">${abgabeUploadBtn(ex,'Neue Version hochladen')}</div>`;
+    }else{
+      const over=st.key==='overdue';
+      body=`<span class="abg-chip ${over?'overdue':'open'}">${over?`Überfällig – Abgabe war bis ${fmtIso(ex.abgabe_bis)}`
+        :`Bitte bis ${fmtIso(ex.abgabe_bis)} einreichen (${restTage(daysBetween(t,ex.abgabe_bis))})`}</span>
+        <div class="abg-actions">${abgabeUploadBtn(ex,'PDF hochladen')}</div>
+        <div class="muted abg-hint">Nur PDF, höchstens ${ABGABE_MAX_MB} MB.</div>`;
+    }
+  }else if(isStaff){
+    const stu=students().slice().sort((a,b)=>fullName(a).localeCompare(fullName(b),'de'));
+    const done=stu.filter(p=>abgabeFor(ex.id,p.id)).length;
+    const rows=stu.map(p=>{
+      const st=abgabeState(ex,p.id);
+      const lbl={upcoming:'noch nicht begonnen',open:'offen',overdue:'überfällig',done:st.late?'verspätet eingereicht':'eingereicht'}[st.key];
+      const cls={upcoming:'',open:'',overdue:'cell-red',done:st.late?'cell-yellow':'cell-green'}[st.key];
+      const when=st.up?new Date(st.up.uploaded_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'}):'–';
+      const link=st.up?`<a href="#" onclick="openAbgabePdf('${esc(st.up.file_path)}');return false">PDF ansehen</a>`:'–';
+      return `<tr><td class="name">${esc(fullName(p))}</td><td class="${cls}">${lbl}</td><td>${esc(when)}</td><td>${link}</td></tr>`;
+    }).join('');
+    const missing=t>ex.abgabe_bis && done<stu.length;
+    body=`<span class="abg-chip ${missing?'overdue':'open'}">${done} von ${stu.length} eingereicht</span>
+      <details class="past-termine"><summary>Übersicht je Schüler</summary>
+        <div class="table-wrap"><table><tr><th class="name">Schüler</th><th>Status</th><th>Eingereicht am</th><th>PDF</th></tr>${rows}</table></div>
+      </details>`;
+  }
+  const isLate=t>ex.abgabe_bis;
+  return `<div class="ann-item abg-card ${isLate?'abg-past':''}">
+    <h4>${esc(ex.titel)} <span class="date">${esc(period)}</span></h4>
+    ${desc}${body}${adminBtns}</div>`;
+}
+function openAbgabeExamDialog(id){
+  if(!canEdit('pruefungen')) return;
+  const ex=id?cache.homeExams.find(x=>x.id===id):null;
+  const body=`<label>Titel<input type="text" id="he_titel" value="${esc(ex?.titel||'')}" placeholder="z.B. Hausarbeit Harmonielehre"></label>
+    <label>Aufgabe / Hinweise (optional)<textarea id="he_besch" class="ta" rows="4">${esc(ex?.beschreibung||'')}</textarea></label>
+    <label>Bearbeitungszeit ab<input type="date" id="he_von" value="${ex?.bearbeitung_von||todayISO()}"></label>
+    <label>Abgabe bis (einschließlich)<input type="date" id="he_bis" value="${ex?.abgabe_bis||''}"></label>`;
+  openDialog(ex?'Prüfung bearbeiten':'Prüfung zu Hause anlegen', body, async()=>{
+    const titel=$('#he_titel').value.trim(), von=$('#he_von').value, bis=$('#he_bis').value;
+    if(!titel||!von||!bis){ toast('Titel, Bearbeitungsbeginn und Abgabetermin sind Pflicht.','err'); return false; }
+    if(bis<von){ toast('Der Abgabetermin liegt vor dem Bearbeitungsbeginn.','err'); return false; }
+    const rec={titel, beschreibung:$('#he_besch').value.trim()||null, bearbeitung_von:von, abgabe_bis:bis};
+    const res = ex ? await SB.from('home_exams').update(rec).eq('id',ex.id).select().single()
+                   : await SB.from('home_exams').insert(rec).select().single();
+    if(res.error){ toast(res.error.message,'err'); return false; }
+    if(ex) Object.assign(ex,res.data); else cache.homeExams.push(res.data);
+    renderAbgaben(); renderAbgabenStart(); toast('Gespeichert');
+  });
+}
+async function deleteAbgabeExam(id){
+  const ex=cache.homeExams.find(x=>x.id===id); if(!ex||!canEdit('pruefungen')) return;
+  const ups=cache.homeUploads.filter(u=>u.exam_id===id);
+  if(!confirm(`Prüfung „${ex.titel}“ löschen?${ups.length?`\nDie ${ups.length} abgegebenen PDFs werden dabei ebenfalls gelöscht.`:''}`)) return;
+  if(ups.length){
+    const r=await SB.storage.from('abgaben').remove(ups.map(u=>u.file_path));
+    if(r.error){ toast('PDFs konnten nicht gelöscht werden: '+r.error.message,'err'); return; }
+  }
+  const {error}=await SB.from('home_exams').delete().eq('id',id);
+  if(error){ toast(error.message,'err'); return; }
+  cache.homeExams=cache.homeExams.filter(x=>x.id!==id);
+  cache.homeUploads=cache.homeUploads.filter(u=>u.exam_id!==id);
+  renderAbgaben(); renderAbgabenStart(); toast('Gelöscht');
+}
+// PDF abgeben (ersetzt eine fruehere Abgabe derselben Pruefung)
+async function uploadAbgabe(examId, file){
+  const p=currentPerson;
+  if(!p||!file) return;
+  const isPdf=file.type==='application/pdf' || /\.pdf$/i.test(file.name);
+  if(!isPdf){ toast('Bitte eine PDF-Datei auswählen.','err'); return; }
+  if(file.size>ABGABE_MAX_MB*1024*1024){ toast(`Die Datei ist größer als ${ABGABE_MAX_MB} MB.`,'err'); return; }
+  toast('PDF wird hochgeladen …');
+  const path=`${examId}/${p.id}.pdf`;
+  const up=await SB.storage.from('abgaben').upload(path,file,{upsert:true,contentType:'application/pdf'});
+  if(up.error){ toast('Upload-Fehler: '+up.error.message,'err'); return; }
+  const {data,error}=await SB.from('home_exam_uploads')
+    .upsert({exam_id:examId,person_id:p.id,file_path:path,filename:file.name},{onConflict:'exam_id,person_id'}).select().single();
+  if(error){ toast('Abgabe konnte nicht gespeichert werden: '+error.message,'err'); return; }
+  const i=cache.homeUploads.findIndex(u=>u.exam_id===examId&&u.person_id===p.id);
+  if(i>=0) cache.homeUploads[i]=data; else cache.homeUploads.push(data);
+  renderAbgaben(); renderAbgabenStart(); toast('PDF eingereicht – danke!');
+}
+// Privater Bucket: PDF ueber kurzlebigen signierten Link oeffnen.
+async function openAbgabePdf(path){
+  const w=window.open('','_blank');   // synchron oeffnen, sonst blockt der Popup-Blocker
+  const {data,error}=await SB.storage.from('abgaben').createSignedUrl(path,300);
+  if(error||!data?.signedUrl){ if(w) w.close(); toast('PDF konnte nicht geöffnet werden.','err'); return; }
+  if(w) w.location.href=data.signedUrl; else location.href=data.signedUrl;
+}
+
 // ---------- START ----------
 function renderStart(){
   // Kennzahlen
@@ -442,6 +636,7 @@ function renderStart(){
   ];
   const sc=$('#startCards'); if(sc) sc.innerHTML=cards.map(c=>`<div class="stat-card"><div class="num">${c.n}</div><div class="lbl">${c.l}</div></div>`).join('');
   renderUpcomingEvents();
+  renderAbgabenStart();
   renderOnlineUsers();
 
   const canInfo=canEdit('infos');
@@ -1933,6 +2128,7 @@ async function adoptBaseLesson(baseId, planId){
 
 // ---------- BEWERTUNGEN ----------
 function renderBewertung(){
+  renderAbgaben();
   $$('.grades-cols-btn').forEach(b=>b.hidden=!canEdit('bewertung'));
   $$('.tests-cols-btn').forEach(b=>b.hidden=!canEdit('tests'));
   renderTests('harmonielehre','#hlTests');   renderGrades('harmonielehre','#hlGrades');
