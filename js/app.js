@@ -1414,10 +1414,15 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
       return diffMode && live.every(r=>!baseById.get(r.source_id));
     };
     const rank=f=>isSubstitute(f)?0:(inPlan(f)?1:2);
-    const fachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))]
-      .sort((a,b)=>rank(a)-rank(b) || fachIdx(a)-fachIdx(b));
+    const allFachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))];
+    // Arrangieren laeuft normalerweise als Gruppenstunde in einem eigenen Slot. Steht es im
+    // selben Slot wie Einzelunterricht (z.B. Freitags statt Klavier), gehoert es ganz nach
+    // rechts und wird wie die anderen Einzelstunden untereinander gestapelt.
+    const mitEinzel=allFachs.some(x=>INDIVIDUAL_FAECHER.includes(x));
+    const orderIdx=f=>(f==='Arrangieren' && mitEinzel)?90:fachIdx(f);
+    const fachs=allFachs.sort((a,b)=>rank(a)-rank(b) || orderIdx(a)-orderIdx(b));
     return fachs.map(f=>{
-      const horiz=['Musiktheorie','Arrangieren'].includes(f)?' row':'';
+      const horiz=(f==='Musiktheorie' || (f==='Arrangieren' && !mitEinzel))?' row':'';
       const planForFach=planRows.filter(r=>r.fach===f).sort((a,b)=>(a.sort||0)-(b.sort||0));
       const removedForFach=removedRows.filter(r=>r.fach===f);
       const siblingCount=planForFach.length+removedForFach.length;
