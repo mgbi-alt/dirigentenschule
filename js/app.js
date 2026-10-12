@@ -471,30 +471,19 @@ function renderAbgabenStart(){
   const exams=cache.homeExams.slice().sort((a,b)=>a.abgabe_bis.localeCompare(b.abgabe_bis));
   const item=(cls,ex,text)=>`<div class="abgabe-item ${cls}" onclick="goToAbgaben()" role="button" tabindex="0">
       <div class="abgabe-title">${esc(ex.titel)}</div><div class="abgabe-text">${text}</div></div>`;
-  let items=[];
-  if(abgabeIsStudent()){
-    items=exams.map(ex=>{
-      const st=abgabeState(ex, currentPerson.id);
-      if(st.key==='upcoming') return '';
-      if(st.key==='overdue') return item('overdue',ex,`Überfällig: Abgabe war bis ${fmtIso(ex.abgabe_bis)}. Es wurde noch kein PDF hochgeladen.`);
-      if(st.key==='done') return t>ex.abgabe_bis ? '' :
-        item('ok',ex,`Eingereicht${st.late?' (verspätet)':''} – danke!`);
-      return item('open',ex,`Bitte bis ${fmtIso(ex.abgabe_bis)} als PDF einreichen (${restTage(daysBetween(t,ex.abgabe_bis))}).`);
-    });
-  }else if(isStaff){
-    const stu=students();
-    items=exams.map(ex=>{
-      if(t<ex.bearbeitung_von || !stu.length) return '';
-      const done=stu.filter(p=>abgabeFor(ex.id,p.id)).length, miss=stu.length-done;
-      if(t>ex.abgabe_bis) return miss>0
-        ? item('overdue',ex,`Abgabe war bis ${fmtIso(ex.abgabe_bis)}: ${miss} von ${stu.length} Schülern haben noch nichts eingereicht.`)
-        : '';
-      return item('open',ex,`Abgabe bis ${fmtIso(ex.abgabe_bis)}: ${done} von ${stu.length} eingereicht.`);
-    });
-  }
-  items=items.filter(Boolean);
-  box.innerHTML=items.length
-    ? `<div class="abgaben-box"><h2 class="section-h">Prüfungen zu Hause</h2>${items.join('')}</div>` : '';
+  // Nur fuer Schueler, als Info unter "Aktuelle Infos" -- und erst, sobald die
+  // Bearbeitungszeit begonnen hat. Lehrer/Admins sehen den Stand je Schueler auf
+  // der Seite "Bewertungen > Pruefungen & Tests".
+  if(!abgabeIsStudent()){ box.innerHTML=''; return; }
+  const items=exams.map(ex=>{
+    const st=abgabeState(ex, currentPerson.id);
+    if(st.key==='upcoming') return '';
+    if(st.key==='overdue') return item('overdue',ex,`Überfällig: Abgabe war bis ${fmtIso(ex.abgabe_bis)}. Es wurde noch kein PDF hochgeladen.`);
+    if(st.key==='done') return t>ex.abgabe_bis ? '' :
+      item('ok',ex,`Eingereicht${st.late?' (verspätet)':''} – danke!`);
+    return item('open',ex,`Bitte bis ${fmtIso(ex.abgabe_bis)} als PDF einreichen (${restTage(daysBetween(t,ex.abgabe_bis))}).`);
+  }).filter(Boolean);
+  box.innerHTML=items.length?`<div class="abgaben-box">${items.join('')}</div>`:'';
 }
 // Bereich auf "Bewertungen > Prüfungen & Tests"
 function renderAbgaben(){
@@ -1433,6 +1422,7 @@ function renderUpcomingEvents(){
   const el=$('#upcomingEvents'); if(!el) return;
   const todayStr=dateISO(new Date());
   const upcoming=calAllItems()
+    .filter(t=>!t.isAbgabe)   // Abgabetermine stehen im Kalender, nicht bei "Nächste Termine"
     .filter(t=>(t.bis_datum||t.datum)>=todayStr)
     .sort((a,b)=>a.datum.localeCompare(b.datum)||(a.uhrzeit||'').localeCompare(b.uhrzeit||''))
     .slice(0,5);
