@@ -1568,6 +1568,24 @@ function absencesForPlan(planId){ return cache.absences.filter(a=>a.plan_id===pl
 function personAbsentForPlan(pid, planId){
   return !!planId && cache.absences.some(a=>a.plan_id===planId && a.person_id===pid);
 }
+// Wie personAbsentForPlan, aber bezogen auf den TAG des Tests: eine Abmeldung nur fuer
+// Freitag macht eine Person nicht abwesend, wenn der Test samstags stattfindet.
+// Bestimmung des Testtags/-zeit (in dieser Reihenfolge):
+//  1. als "Test" markierte Stunden des Treffens im Stundenplan (bevorzugt die des Fachs),
+//  2. sonst der Haupttag des Treffens: Samstag, bei reinen Freitags-Treffen Freitag.
+function personAbsentForTest(pid, planId, fach){
+  if(!planId) return false;
+  const abs=cache.absences.filter(a=>a.plan_id===planId && a.person_id===pid);
+  if(!abs.length) return false;
+  const fachNamen=fach==='gehoerbildung'?['Gehörbildung']:['Musiktheorie','Harmonielehre'];
+  const markiert=cache.tt.filter(r=>r.plan_id===planId && r.test);
+  let stunden=markiert.filter(r=>fachNamen.includes(r.fach));
+  if(!stunden.length) stunden=markiert;
+  if(stunden.length) return stunden.some(l=>abs.some(a=>absCoversLesson(a,l.tag,l.zeit)));
+  const plan=cache.plans.find(p=>p.id===planId);
+  const tag=(plan&&plan.tage)==='fr'?'freitag':'samstag';
+  return abs.some(a=>absCoversDay(a,tag));
+}
 function absReasonForPlan(pid, planId){
   const a=cache.absences.find(a=>a.plan_id===planId && a.person_id===pid);
   return a?(a.grund||'Abgemeldet'):'';
@@ -2235,7 +2253,8 @@ function testColText(c){
 // Ergebnis erscheint dann "abw." statt "–", der Grund als Tooltip.
 function testCellHtml(p, c, r, edit, fach){
   const v=r?Math.round(r.ergebnis):null;
-  const absent=personAbsentForPlan(p.id, c.plan_id);
+  // Mit eingetragenem Ergebnis war die Person da -> nicht als abwesend markieren.
+  const absent=v==null && personAbsentForTest(p.id, c.plan_id, fach);
   const txt=v==null?(absent?'abw.':'–'):v+'%';
   const cls=[edit?'cell-edit':'', absent?'cell-absent':''].filter(Boolean).join(' ');
   const title=absent?` title="${esc(absReasonForPlan(p.id,c.plan_id))}"`:'';
