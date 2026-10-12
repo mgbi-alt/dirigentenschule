@@ -146,6 +146,8 @@ em{color:var(--text2);font-style:normal}
 .abgabe-item.overdue .abgabe-text{font-weight:600}
 .abg-card.abg-past{opacity:.92}
 .abg-desc{white-space:pre-wrap;overflow-wrap:anywhere}
+.abg-task{font-size:13.5px;margin-top:8px;overflow-wrap:anywhere}
+.abg-task a{color:var(--accent2);font-weight:600}
 .abg-chip{display:inline-block;font-size:12.5px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:8px;
   background:var(--yellow-bg);color:var(--text)}
 .abg-chip.ok{background:var(--green-bg);color:var(--success)}

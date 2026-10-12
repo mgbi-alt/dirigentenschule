@@ -526,6 +526,14 @@ function abgabeCardHtml(ex, edit){
       <button class="btn-ghost" onclick="openAbgabeExamDialog('${ex.id}')">Bearbeiten</button>
       <button class="btn-ghost" onclick="deleteAbgabeExam('${ex.id}')">Löschen</button></div>`:'';
   const desc=ex.beschreibung?`<div class="ann-body abg-desc">${esc(ex.beschreibung)}</div>`:'';
+  // Aufgabenstellung (PDF): Lehrer/Admins immer, Schueler ab Beginn der Bearbeitungszeit.
+  let task='';
+  if(ex.aufgabe_path){
+    if(isStaff || t>=ex.bearbeitung_von)
+      task=`<div class="abg-task">Aufgabenstellung: <a href="#" onclick="openAbgabePdf('${esc(ex.aufgabe_path)}');return false">${esc(ex.aufgabe_filename||'PDF')} öffnen</a></div>`;
+    else
+      task=`<div class="abg-task muted">Die Aufgabenstellung (PDF) ist ab ${fmtIso(ex.bearbeitung_von)} abrufbar.</div>`;
+  }
   let body='';
   if(abgabeIsStudent()){
     const st=abgabeState(ex, currentPerson.id);
@@ -564,7 +572,7 @@ function abgabeCardHtml(ex, edit){
   const isLate=t>ex.abgabe_bis;
   return `<div class="ann-item abg-card ${isLate?'abg-past':''}">
     <h4>${esc(ex.titel)} <span class="date">${esc(period)}</span></h4>
-    ${desc}${body}${adminBtns}</div>`;
+    ${desc}${task}${body}${adminBtns}</div>`;
 }
 function openAbgabeExamDialog(id){
   if(!canEdit('pruefungen')) return;
@@ -572,25 +580,56 @@ function openAbgabeExamDialog(id){
   const body=`<label>Titel<input type="text" id="he_titel" value="${esc(ex?.titel||'')}" placeholder="z.B. Hausarbeit Harmonielehre"></label>
     <label>Aufgabe / Hinweise (optional)<textarea id="he_besch" class="ta" rows="4">${esc(ex?.beschreibung||'')}</textarea></label>
     <label>Bearbeitungszeit ab<input type="date" id="he_von" value="${ex?.bearbeitung_von||todayISO()}"></label>
-    <label>Abgabe bis (einschließlich)<input type="date" id="he_bis" value="${ex?.abgabe_bis||''}"></label>`;
+    <label>Abgabe bis (einschließlich)<input type="date" id="he_bis" value="${ex?.abgabe_bis||''}"></label>
+    <label>Aufgabenstellung als PDF (optional)<input type="file" id="he_file" accept="application/pdf,.pdf"></label>
+    ${ex?.aufgabe_path?`<p class="muted">Aktuell hinterlegt: ${esc(ex.aufgabe_filename||'PDF')} – eine neue Datei ersetzt sie.</p>
+      <label class="chk"><input type="checkbox" id="he_rm"> Aufgabenstellung entfernen</label>`:''}
+    <p class="muted">Schüler können die Aufgabenstellung ab Beginn der Bearbeitungszeit abrufen. Nur PDF, höchstens ${ABGABE_MAX_MB} MB.</p>`;
   openDialog(ex?'Prüfung bearbeiten':'Prüfung zu Hause anlegen', body, async()=>{
     const titel=$('#he_titel').value.trim(), von=$('#he_von').value, bis=$('#he_bis').value;
     if(!titel||!von||!bis){ toast('Titel, Bearbeitungsbeginn und Abgabetermin sind Pflicht.','err'); return false; }
     if(bis<von){ toast('Der Abgabetermin liegt vor dem Bearbeitungsbeginn.','err'); return false; }
+    // Datei vor dem Speichern pruefen, damit nichts halb gespeichert wird.
+    const file=$('#he_file').files[0], remove=!!$('#he_rm')?.checked;
+    if(file){
+      if(!(file.type==='application/pdf' || /\.pdf$/i.test(file.name))){ toast('Bitte als Aufgabenstellung eine PDF-Datei wählen.','err'); return false; }
+      if(file.size>ABGABE_MAX_MB*1024*1024){ toast(`Die Datei ist größer als ${ABGABE_MAX_MB} MB.`,'err'); return false; }
+    }
     const rec={titel, beschreibung:$('#he_besch').value.trim()||null, bearbeitung_von:von, abgabe_bis:bis};
     const res = ex ? await SB.from('home_exams').update(rec).eq('id',ex.id).select().single()
                    : await SB.from('home_exams').insert(rec).select().single();
     if(res.error){ toast(res.error.message,'err'); return false; }
-    if(ex) Object.assign(ex,res.data); else cache.homeExams.push(res.data);
-    renderAbgaben(); renderAbgabenStart(); toast('Gespeichert');
+    let row=res.data, note='';
+    if(file || (remove && ex?.aufgabe_path)){
+      const path=`aufgaben/${row.id}.pdf`;
+      let patch=null;
+      if(file){
+        const up=await SB.storage.from('abgaben').upload(path,file,{upsert:true,contentType:'application/pdf'});
+        if(up.error) note=` – die Aufgabenstellung konnte nicht hochgeladen werden (${up.error.message}). Bitte über „Bearbeiten“ erneut versuchen.`;
+        else patch={aufgabe_path:path, aufgabe_filename:file.name};
+      }else{
+        const rm=await SB.storage.from('abgaben').remove([ex.aufgabe_path]);
+        if(rm.error) note=` – die Aufgabenstellung konnte nicht entfernt werden (${rm.error.message}).`;
+        else patch={aufgabe_path:null, aufgabe_filename:null};
+      }
+      if(patch){
+        const r2=await SB.from('home_exams').update(patch).eq('id',row.id).select().single();
+        if(r2.error) note=` – Aufgabenstellung nicht verknüpft (${r2.error.message}).`;
+        else row=r2.data;
+      }
+    }
+    if(ex) Object.assign(ex,row); else cache.homeExams.push(row);
+    renderAbgaben(); renderAbgabenStart();
+    if(note) toast('Prüfung gespeichert'+note,'err'); else toast('Gespeichert');
   });
 }
 async function deleteAbgabeExam(id){
   const ex=cache.homeExams.find(x=>x.id===id); if(!ex||!canEdit('pruefungen')) return;
   const ups=cache.homeUploads.filter(u=>u.exam_id===id);
+  const files=ups.map(u=>u.file_path).concat(ex.aufgabe_path?[ex.aufgabe_path]:[]);
   if(!confirm(`Prüfung „${ex.titel}“ löschen?${ups.length?`\nDie ${ups.length} abgegebenen PDFs werden dabei ebenfalls gelöscht.`:''}`)) return;
-  if(ups.length){
-    const r=await SB.storage.from('abgaben').remove(ups.map(u=>u.file_path));
+  if(files.length){
+    const r=await SB.storage.from('abgaben').remove(files);
     if(r.error){ toast('PDFs konnten nicht gelöscht werden: '+r.error.message,'err'); return; }
   }
   const {error}=await SB.from('home_exams').delete().eq('id',id);
