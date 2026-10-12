@@ -1608,7 +1608,7 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
   const rows=cache.tt.filter(r=>r.tag===day && r.plan_id===planId);
   const planSourceIds = new Set(rows.map(r=>r.source_id).filter(Boolean));
   const planBySource = new Map(rows.filter(r=>r.source_id).map(r=>[r.source_id,r]));
-  const slots=[...new Set(rows.concat(baseRows).map(r=>r.zeit))].sort((a,b)=>slotSortFor(a)-slotSortFor(b));
+  const slots=[...new Set(rows.concat(baseRows).map(r=>r.zeit))].sort(compareSlots);
   const fachIdx=f=>{ const i=FACH_ORDER.indexOf(f); return i<0?99:i; };
   const line=(prefix,cur,old,changed,cls)=> changed
     ? `<div class="tt-meta tt-chg">${prefix}${old?`<s>${esc(old)}</s> `:''}${cur?esc(cur):'<em>–</em>'}</div>`
@@ -1735,7 +1735,10 @@ function renderStundenplan(){
     $('#ttGrid').innerHTML='<p class="muted">Für diese Person ist kein Name hinterlegt – „Mein Plan" ist nicht verfügbar.</p>'; return;
   }
   const day=ttSelectedDay;
-  const dayDiff = diffMode && day==='samstag';   // Freitag wird nicht gegen den Grundplan verglichen
+  // Freitag wird nicht gegen den Grundplan verglichen; ein komplett neu aufgebauter Samstag
+  // (keine Stunde stammt aus dem Grundplan, z.B. Pruefungstag) ebenfalls nicht.
+  const dayDiff = diffMode && day==='samstag'
+    && cache.tt.some(r=>r.plan_id===planId && r.tag===day && r.source_id);
   const res=buildDayHtml(day, planId, base, view, edit, token, dayDiff);
   let banner='';
   if(dayDiff) banner+=`<p class="muted">Vertretungsplan – <span class="tt-leg-chg">geändert</span> · <span class="tt-leg-new">neu</span> · <span class="tt-leg-rem">entfällt</span> (Vergleich zum Grundplan).${edit?' Veraltete Abweichung? Stunde öffnen → „Auf Grundplan zurücksetzen"; „entfällt"-Stunde anklicken zum Übernehmen.':''}</p>`;
@@ -2104,6 +2107,14 @@ async function ensureRoom(name){
   if(!name || cache.rooms.some(r=>r.name===name)) return;
   const {data}=await SB.from('rooms').insert({name}).select().single();
   if(data) cache.rooms.push(data);
+}
+// Innerhalb eines Tages chronologisch nach Startzeit; nur wenn eine Zeit nicht
+// als "H:MM - H:MM" lesbar ist, entscheidet die Sortierung aus "Zeiten verwalten".
+function compareSlots(a, b){
+  const ra=parseZeitRange(a), rb=parseZeitRange(b);
+  if(ra && rb && ra.start!==rb.start) return ra.start-rb.start;
+  if(ra && rb && ra.end!==rb.end) return ra.end-rb.end;
+  return slotSortFor(a)-slotSortFor(b);
 }
 function slotSortFor(zeit){
   const ts=cache.timeSlots.find(s=>s.label===zeit); if(ts) return ts.sort||0;
