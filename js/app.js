@@ -1671,8 +1671,11 @@ function buildDayHtml(day, planId, base, view, edit, token, diffMode){
       if(f==='Pause') return false;
       const live=planRows.filter(r=>r.fach===f && isLive(r));
       if(!live.length) return false;
-      if(!FACH_ORDER.includes(f)) return true;
-      return diffMode && live.every(r=>!baseById.get(r.source_id));
+      // Nur fachfremde Ersatzstunden (nicht in FACH_ORDER) kommen ganz nach vorne links.
+      // Regulaere Faecher behalten immer ihre uebliche Spalten-Reihenfolge (FACH_ORDER) --
+      // auch wenn sie im Treffenplan neu gegenueber dem Grundplan sind. Dass eine Stunde
+      // neu ist, zeigt weiterhin das "neu"-Badge, nicht die Spaltenposition.
+      return !FACH_ORDER.includes(f);
     };
     const rank=f=>isSubstitute(f)?0:(inPlan(f)?1:2);
     const allFachs=[...new Set(planRows.concat(removedRows).map(r=>r.fach))];
